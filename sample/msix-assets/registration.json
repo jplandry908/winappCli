@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "actions": [
+    {
+      "id": "ExampleAppActionProvider.SendMessage",
+      "description": "Send a message",
+      "icon": "ms-resource://assets/StoreLogo.png",
+      "usesGenerativeAI": false,
+      "inputs": [
+        {
+          "name": "message",
+          "kind": "Text"
+        }
+      ],
+      "inputCombinations": [
+        {
+          "inputs": [
+            "message"
+          ],
+          "description": "Send message '${message.Text}'"
+        }
+      ],
+      "invocation": {
+        "type": "Uri",
+        "uri": "sparse-example://send-message?message=${message.Text}"
+      }
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "name": "windows-sdks",
+  "version": "1.0.0",
+  "description": "Windows SDK and BuildTools utilities for Node.js native addon development",
+  "main": "index.js",
+  "bin": {
+    "winsdk": "./cli.js"
+  },
+  "scripts": {
+    "setup": "node setup-sdks.js",
+    "download-buildtools": "node run-buildtool.js",
+    "test": "node examples/test-buildtools.js",
+    "postinstall": "node setup-sdks.js --postinstall"
+  },
+  "keywords": [
+    "windows",
+    "sdk",
+    "buildtools",
+    "nuget",
+    "cppwinrt",
+    "windows-app-sdk",
+    "native-addon"
+  ],
+  "author": "Nikola Metulev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nmetulev/electron-windows-sdks.git"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "os": [
+    "win32"
+  ],
+  "dependencies": {},
+  "devDependencies": {},
+  "files": [
+    "index.js",
+    "cli.js",
+    "setup-sdks.js",
+    "nuget-utils.js",
+    "buildtools-utils.js",
+    "run-buildtool.js",
+    "msix-utils.js",
+    "msix-default-assets/",
+    "appxmanifest-templates/",
+    "addon-utils.js",
+    "addon-template/",
+    "utils.js",
+    "README.md",
+    "LICENSE"
+  ]
+}
