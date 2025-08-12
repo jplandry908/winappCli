@@ -38,6 +38,7 @@
   "files": [
     "index.js",
     "cli.js",
+    "config-utils.js",
     "setup-sdks.js",
     "nuget-utils.js",
     "buildtools-utils.js",
@@ -48,6 +49,7 @@
     "addon-utils.js",
     "addon-template/",
     "utils.js",
+    "winappsdk-metadata.js",
     "README.md",
     "LICENSE"
   ]
