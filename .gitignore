@@ -181,3 +181,19 @@ Thumbs.db
 *.swp
 *.sln.ide
 launchSettings.json
+
+# Local test artifacts for the vcpkg port test harness (ignore generated outputs only)
+build/
+
+# Ignore local winsdk workspace and per-project publish outputs
+.winsdk/
+src/**/bin/**/publish/
+
+# Ignore local portfile-cli-test outputs except for CMakeLists.txt
+src/**/portfile-cli-test/*
+!/src/**/portfile-cli-test/CMakeLists.txt
+/src/winsdk-vcpkg/vcpkg_sample/CMakeFiles
+
+vcpkg_installed/
+
+CMakeCache.txt

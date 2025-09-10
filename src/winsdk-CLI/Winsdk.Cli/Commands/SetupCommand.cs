@@ -57,6 +57,7 @@ internal class SetupCommand : Command
         Options.Add(quietOption);
         Options.Add(yesOption);
         Options.Add(archOption);
+        Options.Add(Program.VerboseOption);
 
         SetAction(async (parseResult, ct) =>
         {
@@ -67,6 +68,7 @@ internal class SetupCommand : Command
             var quiet = parseResult.GetValue(quietOption);
             var assumeYes = parseResult.GetValue(yesOption);
             var arch = parseResult.GetRequiredValue(archOption);
+            var verbose = parseResult.GetValue(Program.VerboseOption);
 
             var winsdkDir = Path.Combine(baseDirectory, ".winsdk");
             var pkgsDir = Path.Combine(winsdkDir, "packages");
@@ -91,6 +93,12 @@ internal class SetupCommand : Command
             var usedVersions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
             WinsdkConfig pinned = new WinsdkConfig();
+
+            if (quiet && verbose)
+            {
+                Console.Error.WriteLine($"Cannot specify both --quiet and --verbose options together.");
+                return 1;
+            }
 
             Console.WriteLine($"{UiSymbols.Note} Checking for winsdk.yaml...");
             var hadConfig = config.Exists();
@@ -182,6 +190,28 @@ internal class SetupCommand : Command
             layout.CopyRuntimesAllArch(pkgsDir, binRoot);
             var binArchs = Directory.Exists(binRoot) ? string.Join(", ", Directory.EnumerateDirectories(binRoot).Select(Path.GetFileName)) : "(none)";
             Console.WriteLine($"{UiSymbols.Gear} Runtime binaries ready for archs: {binArchs}");
+
+            // Copy Windows App SDK license into the workspace share so downstream consumers can include the license in their packages.
+            try
+            {
+                if (usedVersions.TryGetValue("Microsoft.WindowsAppSDK", out var wasdkVersion))
+                {
+                    var pkgDir = Path.Combine(pkgsDir, $"Microsoft.WindowsAppSDK.{wasdkVersion}");
+                    var licenseSrc = Path.Combine(pkgDir, "license.txt");
+                    if (File.Exists(licenseSrc))
+                    {
+                        var shareDir = Path.Combine(winsdkDir, "share", "Microsoft.WindowsAppSDK");
+                        Directory.CreateDirectory(shareDir);
+                        var licenseDst = Path.Combine(shareDir, "copyright");
+                        File.Copy(licenseSrc, licenseDst, overwrite: true);
+                        Console.WriteLine($"{UiSymbols.Check} License copied → {licenseDst}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"{UiSymbols.Note} Failed to copy license: {ex.Message}");
+            }
 
             // Collect winmd inputs
             if (!quiet)

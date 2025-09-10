@@ -20,13 +20,17 @@ internal sealed class PackageLayoutService
         EnsureDir(libOut);
         foreach (var libDir in SafeEnumDirs(pkgsDir, "lib", SearchOption.AllDirectories))
         {
-            var cand1 = Path.Combine(libDir, $"win-{arch}");
-            var cand2 = Path.Combine(libDir, $"win10-{arch}");
-            var cand3 = Path.Combine(libDir, "native", $"win10-{arch}");
-
-            CopyTopFiles(cand1, "*.lib", libOut);
-            CopyTopFiles(cand2, "*.lib", libOut);
-            CopyTopFiles(cand3, "*.lib", libOut);
+            var archDir = Path.Combine(libDir, arch);
+            var nativeArchDir = Path.Combine(libDir, "native", arch);
+            var winArchDir = Path.Combine(libDir, $"win-{arch}");
+            var win10ArchDir = Path.Combine(libDir, $"win10-{arch}");
+            var nativeWin10ArchDir = Path.Combine(libDir, "native", $"win10-{arch}");
+            
+            CopyTopFiles(archDir, "*.lib", libOut);
+            CopyTopFiles(nativeArchDir, "*.lib", libOut);
+            CopyTopFiles(winArchDir, "*.lib", libOut);
+            CopyTopFiles(win10ArchDir, "*.lib", libOut);
+            CopyTopFiles(nativeWin10ArchDir, "*.lib", libOut);
         }
     }
 
@@ -156,6 +160,25 @@ internal sealed class PackageLayoutService
                             CopyTopFiles(d, "*.lib", outDir);
                         }
                     }
+                    
+                    // Also check for direct arch folders under native
+                    foreach (var d in SafeEnumSubdirs(sub))
+                    {
+                        var dn = Path.GetFileName(d);
+                        // Check for direct architecture names (x86, x64, arm, arm64)
+                        if (IsValidArchitecture(dn))
+                        {
+                            var outDir = Path.Combine(libRoot, dn);
+                            CopyTopFiles(d, "*.lib", outDir);
+                        }
+                    }
+                }
+                
+                // Handle direct architecture folders
+                if (IsValidArchitecture(name))
+                {
+                    var outDir = Path.Combine(libRoot, name);
+                    CopyTopFiles(sub, "*.lib", outDir);
                 }
             }
         }
@@ -178,5 +201,13 @@ internal sealed class PackageLayoutService
                 }
             }
         }
+    }
+
+    private static bool IsValidArchitecture(string name)
+    {
+        return string.Equals(name, "x86", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(name, "x64", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(name, "arm", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(name, "arm64", StringComparison.OrdinalIgnoreCase);
     }
 }
