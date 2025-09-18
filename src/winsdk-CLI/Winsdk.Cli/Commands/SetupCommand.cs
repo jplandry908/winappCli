@@ -76,189 +76,30 @@ internal class SetupCommand : Command
             var arch = parseResult.GetRequiredValue(archOption);
             var verbose = parseResult.GetValue(Program.VerboseOption);
 
-            var configService = new ConfigService(configDir);
-            var buildToolsService = new BuildToolsService(configService);
-            var winsdkDir = buildToolsService.FindWinsdkDirectory(baseDirectory);
-
-            if (!Directory.Exists(winsdkDir))
-            {
-                Directory.CreateDirectory(winsdkDir);
-            }
-
-            var pkgsDir = Path.Combine(winsdkDir, "packages");
-            var includeOut = Path.Combine(winsdkDir, "include");
-            var libOut = Path.Combine(winsdkDir, "lib");
-            var binOut = Path.Combine(winsdkDir, "bin");
-            Directory.CreateDirectory(pkgsDir);
-            Directory.CreateDirectory(includeOut);
-            Directory.CreateDirectory(libOut);
-            Directory.CreateDirectory(binOut);
-
-            Console.WriteLine($"{UiSymbols.Rocket} using config → {configService.ConfigPath}");
-            Console.WriteLine($"{UiSymbols.Rocket} winsdk init starting in {baseDirectory}");
-            Console.WriteLine($"{UiSymbols.Folder} Workspace → {winsdkDir}");
-
-            if (experimental)
-            {
-                Console.WriteLine($"{UiSymbols.Wrench} Experimental/prerelease packages will be included");
-            }
-
-            var packageService = new PackageInstallationService(configService);
-            var cppwinrt = new CppWinrtService();
-            var usedVersions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-            WinsdkConfig pinned = new();
-
             if (quiet && verbose)
             {
                 Console.Error.WriteLine($"Cannot specify both --quiet and --verbose options together.");
                 return 1;
             }
 
-            Console.WriteLine($"{UiSymbols.Note} Checking for winsdk.yaml...");
-            var hadConfig = configService.Exists();
-            if (hadConfig)
-            {
-                pinned = configService.Load();
-                if (!quiet)
-                {
-                    Console.WriteLine($"{UiSymbols.Note} Found winsdk.yaml; using pinned versions unless overridden.");
-                }
-                if (!ignoreConfig && pinned.Packages.Count > 0)
-                {
-                    var overwrite = assumeYes || Program.PromptYesNo("winsdk.yaml exists with pinned versions. Overwrite with latest versions? [y/N]: ");
-                    if (overwrite) { ignoreConfig = true; }
-                }
-            }
-            else
-            {
-                if (!quiet)
-                {
-                    Console.WriteLine($"{UiSymbols.New} No winsdk.yaml found; will generate one after init.");
-                }
-            }
+            var workspaceSetup = new WorkspaceSetupService();
 
-            if (!quiet)
+            var options = new WorkspaceSetupOptions
             {
-                Console.WriteLine($"{UiSymbols.Package} Installing SDK packages → {pkgsDir}");
-            }
+                BaseDirectory = baseDirectory ?? Environment.CurrentDirectory,
+                ConfigDir = configDir,
+                Quiet = quiet,
+                Verbose = verbose,
+                IncludeExperimental = experimental,
+                IgnoreConfig = ignoreConfig,
+                NoGitignore = noGitignore,
+                AssumeYes = assumeYes,
+                TargetArchitecture = arch.ToString(),
+                RequireExistingConfig = false,
+                ForceLatestBuildTools = true
+            };
 
-            // Initialize workspace
-            packageService.InitializeWorkspace(winsdkDir);
-
-            // Install all SDK packages
-            usedVersions = await packageService.InstallPackagesAsync(
-                winsdkDir,
-                NugetService.SDK_PACKAGES,
-                includeExperimental: experimental,
-                ignoreConfig: ignoreConfig,
-                quiet: quiet,
-                cancellationToken: ct);
-
-            // Prepare consolidated layout and run cppwinrt
-            var cppWinrtExe = cppwinrt.FindCppWinrtExe(pkgsDir, usedVersions);
-            if (cppWinrtExe is null)
-            {
-                Console.Error.WriteLine("cppwinrt.exe not found in installed packages.");
-                return 2;
-            }
-            Console.WriteLine($"{UiSymbols.Tools} Using cppwinrt tool → {cppWinrtExe}");
-
-            // Copy headers, libs, runtimes
-            var layout = new PackageLayoutService();
-            if (!quiet)
-            {
-                Console.WriteLine($"{UiSymbols.Files} Copying headers → {includeOut}");
-            }
-            layout.CopyIncludesFromPackages(pkgsDir, includeOut);
-            Console.WriteLine($"{UiSymbols.Check} Headers ready → {includeOut}");
-
-            var libRoot = Path.Combine(winsdkDir, "lib");
-            if (!quiet)
-            {
-                Console.WriteLine($"{UiSymbols.Books} Copying import libs by arch → {libRoot}");
-            }
-            layout.CopyLibsAllArch(pkgsDir, libRoot);
-            var libArchs = Directory.Exists(libRoot) ? string.Join(", ", Directory.EnumerateDirectories(libRoot).Select(Path.GetFileName)) : "(none)";
-            Console.WriteLine($"{UiSymbols.Books} Import libs ready for archs: {libArchs}");
-
-            var binRoot = Path.Combine(winsdkDir, "bin");
-            if (!quiet)
-            {
-                Console.WriteLine($"{UiSymbols.Gear} Copying runtime binaries by arch → {binRoot}");
-            }
-            layout.CopyRuntimesAllArch(pkgsDir, binRoot);
-            var binArchs = Directory.Exists(binRoot) ? string.Join(", ", Directory.EnumerateDirectories(binRoot).Select(Path.GetFileName)) : "(none)";
-            Console.WriteLine($"{UiSymbols.Gear} Runtime binaries ready for archs: {binArchs}");
-
-            // Copy Windows App SDK license into the workspace share so downstream consumers can include the license in their packages.
-            try
-            {
-                if (usedVersions.TryGetValue("Microsoft.WindowsAppSDK", out var wasdkVersion))
-                {
-                    var pkgDir = Path.Combine(pkgsDir, $"Microsoft.WindowsAppSDK.{wasdkVersion}");
-                    var licenseSrc = Path.Combine(pkgDir, "license.txt");
-                    if (File.Exists(licenseSrc))
-                    {
-                        var shareDir = Path.Combine(winsdkDir, "share", "Microsoft.WindowsAppSDK");
-                        Directory.CreateDirectory(shareDir);
-                        var licenseDst = Path.Combine(shareDir, "copyright");
-                        File.Copy(licenseSrc, licenseDst, overwrite: true);
-                        Console.WriteLine($"{UiSymbols.Check} License copied → {licenseDst}");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"{UiSymbols.Note} Failed to copy license: {ex.Message}");
-            }
-
-            // Collect winmd inputs
-            if (!quiet)
-            {
-                Console.WriteLine($"{UiSymbols.Search} Searching for .winmd metadata...");
-            }
-            var winmds = layout.FindWinmds(pkgsDir).ToList();
-            if (!quiet)
-            {
-                Console.WriteLine($"{UiSymbols.Search} Found {winmds.Count} .winmd");
-            }
-            if (winmds.Count == 0)
-            {
-                Console.Error.WriteLine("No .winmd files found for C++/WinRT projection.");
-                return 2;
-            }
-
-            // Run cppwinrt inline with -input sdk+ and explicit winmds
-            if (!quiet)
-            {
-                Console.WriteLine($"{UiSymbols.Gear} Generating C++/WinRT projections...");
-            }
-            await CppWinrtRunner.RunWithRspAsync(cppWinrtExe, winmds, includeOut, winsdkDir, verbose: !quiet, cancellationToken: ct);
-            Console.WriteLine($"{UiSymbols.Check} C++/WinRT headers generated → {includeOut}");
-
-            // Save winsdk.yaml with used versions
-            var finalConfig = new WinsdkConfig();
-            foreach (var kvp in usedVersions)
-            {
-                finalConfig.SetVersion(kvp.Key, kvp.Value);
-            }
-            configService.Save(finalConfig);
-            Console.WriteLine($"{UiSymbols.Save} Wrote config → {configService.ConfigPath}");
-
-            // Update .gitignore to exclude .winsdk folder (unless --no-gitignore is specified)
-            if (!noGitignore)
-            {
-                var path = new DirectoryInfo(winsdkDir);
-                if (path.Parent != null)
-                {
-                    GitignoreService.UpdateGitignore(path.Parent.FullName, verbose: !quiet);
-                }
-            }
-
-            Console.WriteLine($"{UiSymbols.Party} winsdk init completed.");
-
-            return 0;
+            return await workspaceSetup.SetupWorkspaceAsync(options, ct);
         });
     }
 }
