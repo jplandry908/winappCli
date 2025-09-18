@@ -24,9 +24,9 @@ internal class SetupCommand : Command
             Description = "Directory to read/store configuration (default: current directory)",
             DefaultValueFactory = (argumentResult) => Directory.GetCurrentDirectory()
         };
-        var experimentalOption = new Option<bool>("--experimental")
+        var prereleaseOption = new Option<bool>("--prerelease")
         {
-            Description = "Include experimental/prerelease packages from NuGet"
+            Description = "Include prerelease packages from NuGet"
         };
         var ignoreConfigOption = new Option<bool>("--ignore-config", "--no-config")
         {
@@ -56,7 +56,7 @@ internal class SetupCommand : Command
 
         Arguments.Add(baseDirectoryArgument);
         Options.Add(configDirOption);
-        Options.Add(experimentalOption);
+        Options.Add(prereleaseOption);
         Options.Add(ignoreConfigOption);
         Options.Add(noGitignoreOption);
         Options.Add(quietOption);
@@ -68,7 +68,7 @@ internal class SetupCommand : Command
         {
             var baseDirectory = parseResult.GetValue(baseDirectoryArgument);
             var configDir = parseResult.GetRequiredValue(configDirOption);
-            var experimental = parseResult.GetValue(experimentalOption);
+            var prerelease = parseResult.GetValue(prereleaseOption);
             var ignoreConfig = parseResult.GetValue(ignoreConfigOption);
             var noGitignore = parseResult.GetValue(noGitignoreOption);
             var quiet = parseResult.GetValue(quietOption);
@@ -90,7 +90,7 @@ internal class SetupCommand : Command
                 ConfigDir = configDir,
                 Quiet = quiet,
                 Verbose = verbose,
-                IncludeExperimental = experimental,
+                IncludeExperimental = prerelease,
                 IgnoreConfig = ignoreConfig,
                 NoGitignore = noGitignore,
                 AssumeYes = assumeYes,
