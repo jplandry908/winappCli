@@ -15,7 +15,18 @@ internal class MsixPackageCommand : Command
         _msixService = new MsixService(buildToolsService);
         var inputFolderArgument = new Argument<string>("input-folder")
         {
-            Description = "Input folder with package layout"
+            Description = "Input folder with package layout (default: .winsdk folder in current project)",
+            Arity = ArgumentArity.ZeroOrOne,
+            DefaultValueFactory = (argumentResult) => 
+            {
+                // Try to find .winsdk directory in current project
+                var projectManifest = MsixService.FindProjectManifest();
+                if (projectManifest != null)
+                {
+                    return Path.GetDirectoryName(projectManifest)!; // Return .winsdk directory
+                }
+                return Directory.GetCurrentDirectory(); // Fallback to current directory
+            }
         };
         var outputFolderArgument = new Argument<string>("output-folder")
         {
@@ -68,7 +79,10 @@ internal class MsixPackageCommand : Command
 
         SetAction(async (parseResult, ct) =>
         {
-            var inputFolder = parseResult.GetRequiredValue(inputFolderArgument);
+            var inputFolder = parseResult.GetValue(inputFolderArgument) ?? 
+                              (MsixService.FindProjectManifest() != null ? 
+                               Path.GetDirectoryName(MsixService.FindProjectManifest()!)! : 
+                               Directory.GetCurrentDirectory());
             var outputFolder = parseResult.GetRequiredValue(outputFolderArgument);
             var name = parseResult.GetValue(nameOption);
             var skipPri = parseResult.GetValue(skipPriOption);

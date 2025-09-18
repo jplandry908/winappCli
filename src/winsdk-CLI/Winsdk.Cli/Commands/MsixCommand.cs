@@ -10,6 +10,5 @@ internal class MsixCommand : Command
         Subcommands.Add(new MsixSignCommand());
         Subcommands.Add(new MsixAddIdentityCommand());
         Subcommands.Add(new MsixPackageCommand());
-        Subcommands.Add(new MsixCertCommand());
     }
 }

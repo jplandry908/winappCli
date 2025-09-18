@@ -4,11 +4,11 @@ using Winsdk.Cli.Services;
 
 namespace Winsdk.Cli.Commands;
 
-internal class MsixCertInstallCommand : Command
+internal class CertInstallCommand : Command
 {
     private readonly CertificateServices _certificateService;
 
-    public MsixCertInstallCommand()
+    public CertInstallCommand()
         : base("install", "Install a certificate to the local machine store")
     {
         var configService = new ConfigService(Directory.GetCurrentDirectory());

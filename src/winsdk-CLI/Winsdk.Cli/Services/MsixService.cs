@@ -14,16 +14,22 @@ internal class MsixService
     {
         _buildToolsService = buildToolsService;
     }
+    
     public async Task GenerateMsixAssetsAsync(bool isSparse, string outputDir, string? packageName, string? publisherName, string description, string version, string? executable, CancellationToken cancellationToken = default)
     {
         var defaults = new SystemDefaultsService();
         packageName ??= defaults.GetDefaultPackageName(Directory.GetCurrentDirectory());
         publisherName ??= defaults.GetDefaultPublisherCN();
         executable ??= $"{packageName}.exe";
-        
+
         publisherName = StripCnPrefix(NormalizePublisher(publisherName));
 
-        Directory.CreateDirectory(outputDir);
+        // Create .winsdk directory structure
+        var winsdkDir = Path.Combine(outputDir, ".winsdk");
+        Directory.CreateDirectory(winsdkDir);
+        
+        // Update outputDir to point to the .winsdk folder
+        outputDir = winsdkDir;
         var manifestName = "appxmanifest.xml";
         var templateSuffix = isSparse ? "sparse" : "packaged";
         var templateResName = FindResourceEnding($".Templates.appxmanifest.{templateSuffix}.xml")
@@ -87,6 +93,49 @@ internal class MsixService
         return v;
     }
 
+    /// <summary>
+    /// Parses an AppX manifest file and extracts the package identity information
+    /// </summary>
+    /// <param name="appxManifestPath">Path to the appxmanifest.xml file</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>MsixIdentityResult containing package name, publisher, and application ID</returns>
+    /// <exception cref="FileNotFoundException">Thrown when the manifest file is not found</exception>
+    /// <exception cref="InvalidOperationException">Thrown when the manifest is invalid or missing required elements</exception>
+    public async Task<MsixIdentityResult> ParseAppxManifestAsync(string appxManifestPath, CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(appxManifestPath))
+            throw new FileNotFoundException($"AppX manifest not found at: {appxManifestPath}");
+
+        // Read and extract MSIX identity from appxmanifest.xml
+        var appxManifestContent = await File.ReadAllTextAsync(appxManifestPath, Encoding.UTF8, cancellationToken);
+
+        // Extract Package Identity information
+        var identityMatch = Regex.Match(appxManifestContent, @"<Identity[^>]*>", RegexOptions.IgnoreCase);
+        if (!identityMatch.Success)
+            throw new InvalidOperationException("No Identity element found in AppX manifest");
+
+        var identityElement = identityMatch.Value;
+
+        // Extract attributes from Identity element
+        var nameMatch = Regex.Match(identityElement, @"Name\s*=\s*[""']([^""']*)[""']", RegexOptions.IgnoreCase);
+        var publisherMatch = Regex.Match(identityElement, @"Publisher\s*=\s*[""']([^""']*)[""']", RegexOptions.IgnoreCase);
+
+        if (!nameMatch.Success || !publisherMatch.Success)
+            throw new InvalidOperationException("AppX manifest Identity element missing required Name or Publisher attributes");
+
+        var packageName = nameMatch.Groups[1].Value;
+        var publisher = publisherMatch.Groups[1].Value;
+
+        // Extract Application ID from Applications/Application element
+        var applicationMatch = Regex.Match(appxManifestContent, @"<Application[^>]*Id\s*=\s*[""']([^""']*)[""'][^>]*>", RegexOptions.IgnoreCase);
+        if (!applicationMatch.Success)
+            throw new InvalidOperationException("No Application element with Id attribute found in AppX manifest");
+
+        var applicationId = applicationMatch.Groups[1].Value;
+
+        return new MsixIdentityResult(packageName, publisher, applicationId);
+    }
+
     public async Task<MsixIdentityResult> AddMsixIdentityToExeAsync(string exePath, string appxManifestPath, string? tempDir = null, bool verbose = true, CancellationToken cancellationToken = default)
     {
         // Validate inputs
@@ -108,32 +157,11 @@ internal class MsixService
 
         try
         {
-            // Read and extract MSIX identity from appxmanifest.xml
-            var appxManifestContent = await File.ReadAllTextAsync(appxManifestPath, Encoding.UTF8, cancellationToken);
-
-            // Extract Package Identity information
-            var identityMatch = Regex.Match(appxManifestContent, @"<Identity[^>]*>", RegexOptions.IgnoreCase);
-            if (!identityMatch.Success)
-                throw new InvalidOperationException("No Identity element found in AppX manifest");
-
-            var identityElement = identityMatch.Value;
-
-            // Extract attributes from Identity element
-            var nameMatch = Regex.Match(identityElement, @"Name\s*=\s*[""']([^""']*)[""']", RegexOptions.IgnoreCase);
-            var publisherMatch = Regex.Match(identityElement, @"Publisher\s*=\s*[""']([^""']*)[""']", RegexOptions.IgnoreCase);
-
-            if (!nameMatch.Success || !publisherMatch.Success)
-                throw new InvalidOperationException("AppX manifest Identity element missing required Name or Publisher attributes");
-
-            var packageName = nameMatch.Groups[1].Value;
-            var publisher = publisherMatch.Groups[1].Value;
-
-            // Extract Application ID from Applications/Application element
-            var applicationMatch = Regex.Match(appxManifestContent, @"<Application[^>]*Id\s*=\s*[""']([^""']*)[""'][^>]*>", RegexOptions.IgnoreCase);
-            if (!applicationMatch.Success)
-                throw new InvalidOperationException("No Application element with Id attribute found in AppX manifest");
-
-            var applicationId = applicationMatch.Groups[1].Value;
+            // Parse the AppX manifest to extract identity information
+            var identityInfo = await ParseAppxManifestAsync(appxManifestPath, cancellationToken);
+            var packageName = identityInfo.PackageName;
+            var publisher = identityInfo.Publisher;
+            var applicationId = identityInfo.ApplicationId;
 
             // Create the MSIX element for the win32 manifest
             var msixElement = $@"<msix xmlns=""urn:schemas-microsoft-com:msix.v1""
@@ -552,5 +580,29 @@ internal class MsixService
         var asm = Assembly.GetExecutingAssembly();
         return asm.GetManifestResourceNames()
             .FirstOrDefault(n => n.EndsWith(endsWith, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Searches for appxmanifest.xml in the project by looking for .winsdk directory in parent directories
+    /// </summary>
+    /// <param name="startDirectory">The directory to start searching from. If null, uses current directory.</param>
+    /// <returns>Path to the project's appxmanifest.xml file, or null if not found</returns>
+    public static string? FindProjectManifest(string? startDirectory = null)
+    {
+        var currentDir = startDirectory ?? Directory.GetCurrentDirectory();
+        var directory = new DirectoryInfo(currentDir);
+
+        while (directory != null)
+        {
+            var manifestPath = Path.Combine(directory.FullName, ".winsdk", "appxmanifest.xml");
+            if (File.Exists(manifestPath))
+            {
+                return manifestPath;
+            }
+
+            directory = directory.Parent;
+        }
+
+        return null;
     }
 }
