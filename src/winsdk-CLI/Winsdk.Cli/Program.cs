@@ -27,6 +27,7 @@ internal static class Program
         RootCommand rootCommand = new("Windows SDK CLI tool")
         {
             new SetupCommand(),
+            new UpdateCommand(),
             new MsixCommand(),
             new CertCommand(),
             new SignCommand(),

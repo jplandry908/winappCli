@@ -106,7 +106,7 @@ internal sealed class PackageInstallationService
 
         // Load pinned config if available
         WinsdkConfig? pinnedConfig = null;
-        if (!ignoreConfig && _configService?.Exists() == true)
+        if (!ignoreConfig && _configService.Exists())
         {
             pinnedConfig = _configService.Load();
         }

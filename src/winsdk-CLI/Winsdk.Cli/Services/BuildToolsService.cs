@@ -74,7 +74,7 @@ internal class BuildToolsService
             .ToArray();
 
         WinsdkConfig? pinnedConfig = null;
-        if (_configService?.Exists() == true)
+        if (_configService.Exists())
         {
             pinnedConfig = _configService.Load();
         }
@@ -193,32 +193,34 @@ internal class BuildToolsService
     /// </summary>
     /// <param name="baseDirectory">Starting directory to search for .winsdk (defaults to user profile directory)</param>
     /// <param name="quiet">Suppress progress messages</param>
+    /// <param name="forceLatest">Force installation of the latest version, even if a version is already installed</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Path to BuildTools bin directory if successful, null otherwise</returns>
-    public async Task<string?> EnsureBuildToolsAsync(string? baseDirectory = null, bool quiet = false, CancellationToken cancellationToken = default)
+    public async Task<string?> EnsureBuildToolsAsync(string? baseDirectory = null, bool quiet = false, bool forceLatest = false, CancellationToken cancellationToken = default)
     {
         var winsdkDir = FindWinsdkDirectory(baseDirectory);
 
-        // Check if BuildTools are already installed
+        // Check if BuildTools are already installed (unless forcing latest)
         var existingBinPath = FindBuildToolsBinPath(winsdkDir);
-        if (existingBinPath != null)
+        if (existingBinPath != null && !forceLatest)
         {
             return existingBinPath;
         }
 
-        // Get pinned version if available
+        // Get pinned version if available (ignore if forcing latest)
         string? pinnedVersion = null;
-        if (_configService?.Exists() == true)
+        if (_configService.Exists() && !forceLatest)
         {
             var pinnedConfig = _configService.Load();
             pinnedVersion = pinnedConfig.GetVersion(BUILD_TOOLS_PACKAGE);
         }
 
-        // BuildTools not found, install them
+        // BuildTools not found or forcing latest, install them
         if (!quiet)
         {
-            var versionInfo = !string.IsNullOrWhiteSpace(pinnedVersion) ? $" (pinned version {pinnedVersion})" : "";
-            Console.WriteLine($"{UiSymbols.Wrench} BuildTools not found, installing {BUILD_TOOLS_PACKAGE}{versionInfo}...");
+            var actionMessage = existingBinPath != null ? "Updating" : "installing";
+            var versionInfo = !string.IsNullOrWhiteSpace(pinnedVersion) ? $" (pinned version {pinnedVersion})" : forceLatest ? " (latest version)" : "";
+            Console.WriteLine($"{UiSymbols.Wrench} {actionMessage} {BUILD_TOOLS_PACKAGE}{versionInfo}...");
         }
 
         var success = await _packageService.EnsurePackageAsync(
