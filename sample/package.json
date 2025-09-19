@@ -11,7 +11,7 @@
     "build-addon": "node-gyp clean configure build --directory=native",
     "copy-msix-assets": "powershell -Command \"if (Test-Path 'msix-full') { Copy-Item -Path 'msix-full\\*' -Destination 'dist\\win-unpacked' -Recurse -Force; Write-Host 'Copied msix-full contents to dist\\win-unpacked' } else { Write-Host 'msix-full folder not found' }\"",
     "generate-dev-cert": "winsdk cert generate --publisher \"CN=Metulev\" --output .\\dev-cert.pfx",
-    "create-msix-package": "winsdk msix package dist\\win-unpacked dist --install-cert --cert .\\dev-cert.pfx"
+    "create-msix-package": "winsdk package dist\\win-unpacked dist --install-cert --cert .\\dev-cert.pfx"
   },
   "build": {
     "win": {

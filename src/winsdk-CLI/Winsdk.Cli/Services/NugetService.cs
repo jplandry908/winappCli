@@ -16,9 +16,9 @@ internal class NugetService
         "Microsoft.WindowsAppSDK",
         "Microsoft.UI.Xaml",
         "Microsoft.Windows.ImplementationLibrary",
-        "Microsoft.Windows.SDK.CPP",
-        "Microsoft.Windows.SDK.CPP.x64",
-        "Microsoft.Windows.SDK.CPP.arm64"
+        $"{BuildToolsService.CPP_SDK_PACKAGE}",
+        $"{BuildToolsService.CPP_SDK_PACKAGE}.x64",
+        $"{BuildToolsService.CPP_SDK_PACKAGE}.arm64"
     };
 
     public async Task EnsureNugetExeAsync(string winsdkDir, CancellationToken cancellationToken = default)

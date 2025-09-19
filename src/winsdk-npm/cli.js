@@ -88,13 +88,12 @@ async function showCombinedHelp() {
       });
       
       child.on('error', (error) => {
-        // If winsdk-cli is not available, show minimal help
-        showFallbackHelp();
+        // If winsdk-cli is not available, continue without showing fallback help
         resolve();
       });
     });
   } catch (error) {
-    showFallbackHelp();
+    // Continue without showing fallback help if winsdk-cli is not available
   }
   
   // Add Node.js-specific commands
@@ -109,18 +108,6 @@ async function showCombinedHelp() {
   console.log('Examples:');
   console.log(`  ${CLI_NAME} nodejs addon generate --name myAddon`);
   console.log(`  ${CLI_NAME} nodejs add-electron-debug-identity`);
-}
-
-function showFallbackHelp() {
-  console.log('Usage:');
-  console.log(`  ${CLI_NAME} <command> [options]`);
-  console.log('');
-  console.log('Commands:');
-  console.log('  setup                        Download and setup Windows SDKs');
-  console.log('  msix <subcommand>           MSIX package management commands');
-  console.log('  tool <tool> [args]          Run Windows SDK tools');
-  console.log('  help                         Show this help message');
-  console.log('  version                      Show version information');
 }
 
 async function showVersion() {

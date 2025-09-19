@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Security;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -15,84 +14,6 @@ internal class MsixService
         _buildToolsService = buildToolsService;
     }
     
-    public async Task GenerateMsixAssetsAsync(bool isSparse, string outputDir, string? packageName, string? publisherName, string description, string version, string? executable, CancellationToken cancellationToken = default)
-    {
-        var defaults = new SystemDefaultsService();
-        packageName ??= defaults.GetDefaultPackageName(Directory.GetCurrentDirectory());
-        publisherName ??= defaults.GetDefaultPublisherCN();
-        executable ??= $"{packageName}.exe";
-
-        publisherName = StripCnPrefix(NormalizePublisher(publisherName));
-
-        // Create .winsdk directory structure
-        var winsdkDir = Path.Combine(outputDir, ".winsdk");
-        Directory.CreateDirectory(winsdkDir);
-        
-        // Update outputDir to point to the .winsdk folder
-        outputDir = winsdkDir;
-        var manifestName = "appxmanifest.xml";
-        var templateSuffix = isSparse ? "sparse" : "packaged";
-        var templateResName = FindResourceEnding($".Templates.appxmanifest.{templateSuffix}.xml")
-                              ?? throw new FileNotFoundException("Embedded template not found");
-
-        string template;
-        var asm = Assembly.GetExecutingAssembly();
-        await using (var s = asm.GetManifestResourceStream(templateResName) ?? throw new FileNotFoundException(templateResName))
-        using (var sr = new StreamReader(s, Encoding.UTF8))
-        {
-            template = await sr.ReadToEndAsync(cancellationToken);
-        }
-
-        var packageNameCamel = ToCamelCase(packageName);
-        var content = template
-            .Replace("{PackageName}", packageName)
-            .Replace("{PackageNameCamelCase}", packageNameCamel)
-            .Replace("{PublisherName}", publisherName)
-            .Replace("{Description}", description)
-            .Replace("Version=\"1.0.0.0\"", $"Version=\"{version}\"")
-            .Replace("{Executable}", executable);
-
-        var manifestPath = Path.Combine(outputDir, manifestName);
-        await File.WriteAllTextAsync(manifestPath, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), cancellationToken);
-
-        var assetsDir = Path.Combine(outputDir, "Assets");
-        Directory.CreateDirectory(assetsDir);
-        var resPrefix = ".Assets.msix_default_assets.";
-        var assetNames = Assembly.GetExecutingAssembly().GetManifestResourceNames()
-            .Where(n => n.Contains(resPrefix, StringComparison.OrdinalIgnoreCase))
-            .ToArray();
-
-        foreach (var res in assetNames)
-        {
-            var fileName = res.Substring(res.LastIndexOf(resPrefix, StringComparison.OrdinalIgnoreCase) + resPrefix.Length);
-            var target = Path.Combine(assetsDir, fileName);
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            await using var s = asm.GetManifestResourceStream(res)!;
-            await using var fs = File.Create(target);
-            await s.CopyToAsync(fs, cancellationToken);
-        }
-    }
-
-    static string StripCnPrefix(string value)
-    {
-        var v = value.Trim().Trim('"', '\'');
-        if (v.StartsWith("CN=", StringComparison.OrdinalIgnoreCase))
-        {
-            v = v.Substring(3);
-        }
-        return v;
-    }
-
-    static string NormalizePublisher(string value)
-    {
-        var v = value.Trim().Trim('"', '\'');
-        if (!v.StartsWith("CN=", StringComparison.OrdinalIgnoreCase))
-        {
-            v = "CN=" + v;
-        }
-        return v;
-    }
-
     /// <summary>
     /// Parses an AppX manifest file and extracts the package identity information
     /// </summary>
@@ -560,26 +481,6 @@ internal class MsixService
         {
             // Ignore cleanup failures
         }
-    }
-
-    private static string ToCamelCase(string name)
-    {
-        var parts = Regex.Split(name, @"[-_\s]+").Where(p => p.Length > 0).ToArray();
-        if (parts.Length == 0) return name;
-        var sb = new StringBuilder(parts[0].ToLowerInvariant());
-        for (int i = 1; i < parts.Length; i++)
-        {
-            sb.Append(char.ToUpperInvariant(parts[i][0]));
-            if (parts[i].Length > 1) sb.Append(parts[i].Substring(1).ToLowerInvariant());
-        }
-        return sb.ToString();
-    }
-
-    private static string? FindResourceEnding(string endsWith)
-    {
-        var asm = Assembly.GetExecutingAssembly();
-        return asm.GetManifestResourceNames()
-            .FirstOrDefault(n => n.EndsWith(endsWith, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

@@ -28,6 +28,8 @@ internal static class Program
         {
             new SetupCommand(),
             new RestoreCommand(),
+            new PackageCommand(),
+            new ManifestCommand(),
             new UpdateCommand(),
             new MsixCommand(),
             new CertCommand(),

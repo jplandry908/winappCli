@@ -2,11 +2,11 @@
 
 namespace Winsdk.Cli.Commands;
 
-internal class MsixPackageCommand : Command
+internal class PackageCommand : Command
 {
     private readonly MsixService _msixService;
 
-    public MsixPackageCommand()
+    public PackageCommand()
         : base("package", "Create an MSIX package from a prepared package directory")
     {
         var configService = new ConfigService(Directory.GetCurrentDirectory());
