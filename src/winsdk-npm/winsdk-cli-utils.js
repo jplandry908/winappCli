@@ -26,25 +26,52 @@ function getWinsdkCliPath() {
 
 /**
  * Helper function to call the native winsdk-cli
+ * Always captures output and returns it along with the exit code
  */
 async function callWinsdkCli(args, options = {}) {
-  const { verbose = true, exitOnError = false } = options;
+  const { verbose = false, exitOnError = false } = options;
   const winsdkCliPath = getWinsdkCliPath();
   
   return new Promise((resolve, reject) => {
+    let stdout = '';
+    let stderr = '';
+    
     const child = spawn(winsdkCliPath, args, {
-      stdio: verbose ? 'inherit' : 'pipe',
+      stdio: verbose ? ['inherit', 'pipe', 'pipe'] : 'pipe',
       shell: false
     });
     
+    child.stdout.on('data', (data) => {
+      const output = data.toString();
+      stdout += output;
+      if (verbose) {
+        process.stdout.write(output);
+      }
+    });
+    
+    child.stderr.on('data', (data) => {
+      const output = data.toString();
+      stderr += output;
+      if (verbose) {
+        process.stderr.write(output);
+      }
+    });
+    
     child.on('close', (code) => {
+      const result = {
+        exitCode: code,
+        stdout: stdout.trim(),
+        stderr: stderr.trim()
+      };
+      
       if (code === 0) {
-        resolve();
+        resolve(result);
       } else {
         if (exitOnError) {
+          console.error(`winsdk-cli failed: ${stderr}`);
           process.exit(code);
         } else {
-          reject(new Error(`winsdk-cli exited with code ${code}`));
+          reject(new Error(`winsdk-cli exited with code ${code}: ${stderr}`));
         }
       }
     });

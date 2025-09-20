@@ -151,10 +151,10 @@ Napi::String CallPhiSilica(const Napi::CallbackInfo& info) {
         try
         {
             // winrt::init_apartment(winrt::apartment_type::single_threaded);
-            // if (LanguageModel::GetReadyState() == AIFeatureReadyState::NotReady)
-            // {
-            //     auto op = LanguageModel::EnsureReadyAsync().get();
-            // }
+            if (LanguageModel::GetReadyState() == AIFeatureReadyState::NotReady)
+            {
+                auto op = LanguageModel::EnsureReadyAsync().get();
+            }
 
             if (LanguageModel::GetReadyState() == AIFeatureReadyState::Ready)
             {
@@ -164,11 +164,13 @@ Napi::String CallPhiSilica(const Napi::CallbackInfo& info) {
                 });
 
                 auto languageModel = LanguageModel::CreateAsync().get();
-                auto options = LanguageModelOptions();
-                options.TopK(15);
-                options.Temperature(0.9f);
+                // auto options = LanguageModelOptions();
+                // options.TopK(15);
+                // options.Temperature(0.9f);
 
-                auto responseWait = languageModel.GenerateResponseAsync(widePrompt, options);
+                //auto responseWait = languageModel.GenerateResponseAsync(widePrompt, options);
+                auto textSummarizer = winrt::Microsoft::Windows::AI::Text::TextSummarizer(languageModel);
+                auto responseWait = textSummarizer.SummarizeAsync(widePrompt);
                 responseWait.Progress([tsfn](auto const& sender, auto const& progress) {
                     std::string responseString = winrt::to_string(progress.c_str());
 

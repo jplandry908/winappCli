@@ -1,14 +1,14 @@
-﻿using System.Diagnostics;
-
 namespace Winsdk.Cli.Services;
 
 internal class CertificateServices
 {
     private readonly BuildToolsService _buildToolsService;
+    private readonly PowerShellService _powerShellService;
 
     public CertificateServices(BuildToolsService buildToolsService)
     {
         _buildToolsService = buildToolsService;
+        _powerShellService = new PowerShellService();
     }
     public record CertificateResult(
         string CertificatePath,
@@ -53,26 +53,11 @@ internal class CertificateServices
 
         try
         {
-            var processStartInfo = new ProcessStartInfo
-            {
-                FileName = "powershell",
-                Arguments = $"-Command \"{command}\"",
-                UseShellExecute = false,
-                RedirectStandardOutput = !verbose,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
+            var (exitCode, _) = await _powerShellService.RunCommandAsync(command, verbose: verbose, cancellationToken: cancellationToken);
 
-            using var process = Process.Start(processStartInfo);
-            if (process != null)
+            if (exitCode != 0)
             {
-                await process.WaitForExitAsync(cancellationToken);
-
-                if (process.ExitCode != 0)
-                {
-                    var error = await process.StandardError.ReadToEndAsync(cancellationToken);
-                    throw new InvalidOperationException($"PowerShell command failed with exit code {process.ExitCode}: {error}");
-                }
+                throw new InvalidOperationException($"PowerShell command failed with exit code {exitCode}");
             }
 
             if (verbose)
@@ -120,30 +105,15 @@ internal class CertificateServices
 
                 try
                 {
-                    var checkProcessInfo = new ProcessStartInfo
-                    {
-                        FileName = "powershell",
-                        Arguments = $"-Command \"{checkCommand}\"",
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true
-                    };
+                    var (_, result) = await _powerShellService.RunCommandAsync(checkCommand, verbose: false, cancellationToken: cancellationToken);
 
-                    using var checkProcess = Process.Start(checkProcessInfo);
-                    if (checkProcess != null)
+                    if (!string.IsNullOrWhiteSpace(result))
                     {
-                        await checkProcess.WaitForExitAsync(cancellationToken);
-                        var result = await checkProcess.StandardOutput.ReadToEndAsync(cancellationToken);
-
-                        if (!string.IsNullOrWhiteSpace(result))
+                        if (verbose)
                         {
-                            if (verbose)
-                            {
-                                Console.WriteLine("Certificate appears to already be installed");
-                            }
-                            return false;
+                            Console.WriteLine("Certificate appears to already be installed");
                         }
+                        return false;
                     }
                 }
                 catch
@@ -157,34 +127,7 @@ internal class CertificateServices
             var absoluteCertPath = Path.GetFullPath(certPath);
             var installCommand = $"Import-PfxCertificate -FilePath '{absoluteCertPath}' -CertStoreLocation 'Cert:\\LocalMachine\\TrustedPeople' -Password (ConvertTo-SecureString -String '{password}' -Force -AsPlainText)";
 
-            if (verbose)
-            {
-                Console.WriteLine("Installing certificate with elevated permissions (UAC prompt may appear)...");
-                Console.WriteLine($"Using absolute path: {absoluteCertPath}");
-            }
-
-            var processStartInfo = new ProcessStartInfo
-            {
-                FileName = "powershell",
-                Arguments = $"-Command \"{installCommand}\"",
-                UseShellExecute = true, // Required for elevation
-                Verb = "runas", // This triggers UAC elevation
-                CreateNoWindow = false, // Show window so user can see any errors
-                WindowStyle = ProcessWindowStyle.Normal
-            };
-
-            using var process = Process.Start(processStartInfo);
-            if (process != null)
-            {
-                await process.WaitForExitAsync(cancellationToken);
-
-                // Note: When using UseShellExecute = true with elevation,
-                // exit codes may not be reliable. We'll assume success if no exception occurred.
-                if (verbose)
-                {
-                    Console.WriteLine("Certificate installation process completed");
-                }
-            }
+            await _powerShellService.RunCommandAsync(installCommand, elevated: true, verbose: verbose, cancellationToken: cancellationToken);
 
             if (verbose)
             {

@@ -5,14 +5,8 @@ namespace Winsdk.Cli.Commands;
 
 internal class ManifestGenerateCommand : Command
 {
-    private readonly ManifestService _manifestService;
-
     public ManifestGenerateCommand() : base("generate", "Generate a manifest in directory")
     {
-        var configService = new ConfigService(Directory.GetCurrentDirectory());
-        var buildToolsService = new BuildToolsService(configService);
-        _manifestService = new ManifestService(buildToolsService);
-
         var directoryArgument = new Argument<string>("directory")
         {
             Description = "Directory to generate manifest in",
@@ -91,16 +85,18 @@ internal class ManifestGenerateCommand : Command
             var yes = parseResult.GetValue(yesOption);
             var verbose = parseResult.GetValue(verboseOption);
 
-            await _manifestService.GenerateManifestAsync(
-                directory, 
-                packageName, 
-                publisherName, 
+            var manifestService = new ManifestService();
+
+            await manifestService.GenerateManifestAsync(
+                directory,
+                packageName,
+                publisherName,
                 version,
                 description,
-                executable, 
-                sparse, 
-                logoPath, 
-                yes, 
+                executable,
+                sparse,
+                logoPath,
+                yes,
                 verbose,
                 ct);
 

@@ -16,7 +16,7 @@ A comprehensive Node.js package for downloading and managing Windows SDK and Bui
 ## 📦 Installation
 
 ```bash
-npm install windows-sdks
+npm install windows-sdk
 ```
 
 The SDK packages will be automatically downloaded during installation. If you need to set them up manually later:
@@ -54,7 +54,7 @@ const {
   runCppWinRT,
   execSyncWithBuildTools,
   getBuildToolPath 
-} = require('windows-sdks');
+} = require('windows-sdk');
 
 // Complete setup (download SDKs + generate CppWinRT headers)
 await setupSDKs();
@@ -319,7 +319,7 @@ If your preferred architecture isn't available, it gracefully falls back to comp
 ### Basic Setup
 
 ```javascript
-const { setupSDKs } = require('windows-sdks');
+const { setupSDKs } = require('windows-sdk');
 
 async function setupProject() {
   try {
@@ -355,7 +355,7 @@ Add to your `package.json`:
 ### Working with Experimental Versions
 
 ```javascript
-const { downloadAndExtractNuGetPackage, getLatestVersion, getNuGetPackageVersions } = require('windows-sdks');
+const { downloadAndExtractNuGetPackage, getLatestVersion, getNuGetPackageVersions } = require('windows-sdk');
 
 // Get all versions including experimental
 const versions = await getNuGetPackageVersions('Microsoft.WindowsAppSDK');
@@ -377,7 +377,7 @@ await downloadAndExtractNuGetPackage('Microsoft.WindowsAppSDK', './packages', {
 ### Custom Package Management
 
 ```javascript
-const { downloadAndExtractNuGetPackage, getPackagePath } = require('windows-sdks');
+const { downloadAndExtractNuGetPackage, getPackagePath } = require('windows-sdk');
 
 // Download any NuGet package
 const result = await downloadAndExtractNuGetPackage('Newtonsoft.Json', './vendor');
@@ -410,7 +410,7 @@ winsdk tool mt.exe -manifest app.manifest -outputresource:app.exe
 
 ```javascript
 // Programmatic approach
-const { execSyncWithBuildTools } = require('windows-sdks');
+const { execSyncWithBuildTools } = require('windows-sdk');
 await execSyncWithBuildTools('mt.exe -manifest app.manifest -outputresource:app.exe');
 ```
 

@@ -187,7 +187,7 @@ internal class ManifestTemplateService
     /// <param name="verbose">Whether to output verbose information</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Generated manifest content</returns>
-    public static async Task<string> GenerateCompleteManifestAsync(
+    public static async Task GenerateCompleteManifestAsync(
         string outputDirectory,
         string packageName,
         string publisherName, 
@@ -232,7 +232,5 @@ internal class ManifestTemplateService
 
         // Generate default assets
         await GenerateDefaultAssetsAsync(outputDirectory, verbose, cancellationToken);
-
-        return content;
     }
 }

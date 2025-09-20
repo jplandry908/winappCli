@@ -37,11 +37,17 @@
   "author": "Metulev",
   "license": "ISC",
   "devDependencies": {
-    "electron": "^37.3.1",
+    "electron": "^38.1.2",
     "electron-builder": "^26.0.12",
-    "nan": "^2.22.2",
-    "node-addon-api": "^8.4.0",
-    "node-gyp": "^11.2.0",
+    "nan": "^2.23.0",
+    "node-addon-api": "^8.5.0",
+    "node-gyp": "^11.4.2",
+    "@electron/rebuild": "^4.0.1",
     "windows-sdk": "file:../src/winsdk-npm"
+  },
+  "overrides": {
+      "app-builder-lib": {
+        "@electron/rebuild": "4.0.1"
+      }
   }
 }

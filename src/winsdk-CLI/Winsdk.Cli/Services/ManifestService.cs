@@ -4,13 +4,6 @@ namespace Winsdk.Cli.Services;
 
 internal class ManifestService
 {
-    private readonly BuildToolsService _buildToolsService;
-
-    public ManifestService(BuildToolsService buildToolsService)
-    {
-        _buildToolsService = buildToolsService;
-    }
-
     public async Task GenerateManifestAsync(
         string directory, 
         string? packageName, 
@@ -30,7 +23,7 @@ internal class ManifestService
         }
 
         // Check if manifest already exists
-        var manifestPath = Path.Combine(directory, "appxmanifest.xml");
+        var manifestPath = MsixService.FindProjectManifest(directory);
         if (File.Exists(manifestPath))
         {
             throw new InvalidOperationException($"Manifest already exists at: {manifestPath}");
@@ -68,9 +61,11 @@ internal class ManifestService
 
         packageName = CleanPackageName(packageName);
 
+        var winsdkDir = Path.Combine(directory, ".winsdk");
+
         // Generate complete manifest using shared service
         await ManifestTemplateService.GenerateCompleteManifestAsync(
-            directory,
+            winsdkDir,
             packageName,
             publisherName,
             version,
@@ -83,7 +78,7 @@ internal class ManifestService
         // If logo path is provided, copy it as additional asset
         if (!string.IsNullOrEmpty(logoPath) && File.Exists(logoPath))
         {
-            await CopyLogoAsAdditionalAssetAsync(directory, logoPath, verbose, cancellationToken);
+            await CopyLogoAsAdditionalAssetAsync(winsdkDir, logoPath, verbose, cancellationToken);
         }
     }
 
@@ -158,6 +153,11 @@ internal class ManifestService
 
     private string PromptForValue(string prompt, string defaultValue)
     {
+        if (!string.IsNullOrEmpty(defaultValue))
+        {
+            return defaultValue;
+        }
+        
         Console.Write($"{prompt} ({defaultValue}): ");
         var input = Console.ReadLine();
         return string.IsNullOrWhiteSpace(input) ? defaultValue : input.Trim();

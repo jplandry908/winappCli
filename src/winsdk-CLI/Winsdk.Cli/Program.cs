@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.CommandLine;
 using Winsdk.Cli.Commands;
 
@@ -6,7 +6,7 @@ namespace Winsdk.Cli;
 
 internal static class Program
 {
-    internal static Option<bool> VerboseOption = new Option<bool>("--verbose")
+    internal static Option<bool> VerboseOption = new Option<bool>("--verbose", "-v")
     {
         Description = "Enable verbose output"
     };
@@ -31,7 +31,8 @@ internal static class Program
             new PackageCommand(),
             new ManifestCommand(),
             new UpdateCommand(),
-            new MsixCommand(),
+            new CreateDebugIdentityCommand(),
+            new GetGlobalWinsdkCommand(),
             new CertCommand(),
             new SignCommand(),
             new ToolCommand()

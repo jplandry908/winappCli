@@ -68,133 +68,71 @@ async function addElectronDebugIdentity(options = {}) {
   const { verbose = true } = options;
   
   if (verbose) {
-    console.log('🔧 Adding MSIX identity to Electron debug process...');
+    console.log('� Adding MSIX debug identity to Electron...');
   }
   
-  const electronExePath = path.join(process.cwd(), 'node_modules', 'electron', 'dist', 'electron.exe');
-  const electronBackupPath = path.join(process.cwd(), 'node_modules', 'electron', 'dist', 'electron.backup.exe');
-  const msixDebugDir = path.join(process.cwd(), 'msix-debug');
-  const manifestPath = path.join(msixDebugDir, 'appxmanifest.xml');
   
   try {
     // Step 1: Make a backup of electron.exe
+    const electronExePath = path.join(process.cwd(), 'node_modules', 'electron', 'dist', 'electron.exe');
+    const electronBackupPath = path.join(process.cwd(), 'node_modules', 'electron', 'dist', 'electron.backup.exe');
+
     if (!fsSync.existsSync(electronExePath)) {
       throw new Error(`Electron executable not found at: ${electronExePath}`);
     }
     
-    if (fsSync.existsSync(electronBackupPath)) {
-      if (verbose) {
-        console.log('⏭️  Backup already exists, skipping backup step');
-      }
-    } else {
-      if (verbose) {
-        console.log('💾 Creating backup of electron.exe...');
-      }
+    if (verbose) {
+      console.log('💾 Creating backup of electron.exe...');
+    }
+    
+    // Create backup if it doesn't exist, or if the current exe is newer than the backup
+    if (!fsSync.existsSync(electronBackupPath) || 
+        fsSync.statSync(electronExePath).mtime > fsSync.statSync(electronBackupPath).mtime) {
       await fs.copyFile(electronExePath, electronBackupPath);
+      
       if (verbose) {
         console.log(`✅ Backup created: ${electronBackupPath}`);
       }
-    }
-    
-    // Step 2: Generate sparse appxmanifest and assets if they don't exist
-    if (fsSync.existsSync(manifestPath)) {
-      if (verbose) {
-        console.log('⏭️  Manifest already exists, skipping generation step');
-      }
     } else {
       if (verbose) {
-        console.log('📄 Generating sparse MSIX manifest and assets using native CLI...');
-      }
-      
-      // Use the native CLI to generate the manifest and assets
-      await callWinsdkCli([
-        'msix', 'init',
-        '--sparse',
-        '--output', msixDebugDir,
-        '--executable', 'node_modules/electron/dist/electron.exe'
-      ], { verbose });
-      
-      if (verbose) {
-        console.log(`✅ Sparse manifest generated: ${manifestPath}`);
+        console.log('⏭️  Backup already exists and is up to date');
       }
     }
     
-    // Step 3: Add identity to electron.exe
+    // Step 2: Use the native CLI to create debug identity (handles manifest generation, identity addition, and package registration)
     if (verbose) {
-      console.log('🔐 Adding MSIX identity to electron.exe...');
-    }
-    
-    const identityResult = await addMsixIdentityToExe(electronExePath, manifestPath, {
-      verbose: verbose
-    });
-    
-    if (verbose) {
-      console.log('✅ MSIX identity added to electron.exe');
-    }
-    
-    // Step 4: Unregister any existing package first
-    if (verbose) {
-      console.log('🗑️  Checking for existing package...');
-    }
-    
-    try {
-      // Get package name from manifest to check and unregister it
-      const manifestContent = await fs.readFile(manifestPath, 'utf8');
-      const nameMatch = manifestContent.match(/<Identity[^>]*Name\s*=\s*["']([^"']*)["']/i);
-      
-      if (nameMatch) {
-        const packageName = nameMatch[1];
-        
-        // First check if package exists
-        const checkCommand = `powershell -Command "Get-AppxPackage -Name '${packageName}'"`;
-        
-        try {
-          const checkResult = execSync(checkCommand, { stdio: 'pipe' });
-          const checkOutput = checkResult.toString().trim();
-          
-          if (checkOutput && checkOutput.length > 0) {
-            // Package exists, remove it
-            if (verbose) {
-              console.log(`📦 Found existing package '${packageName}', removing it...`);
-            }
-            
-            const unregisterCommand = `powershell -Command "Get-AppxPackage -Name '${packageName}' | Remove-AppxPackage"`;
-            execSync(unregisterCommand, { stdio: verbose ? 'inherit' : 'pipe' });
-            
-            if (verbose) {
-              console.log('✅ Existing package unregistered successfully');
-            }
-          } else {
-            // No package found, proceed silently
-            if (verbose) {
-              console.log('ℹ️  No existing package found');
-            }
-          }
-        } catch (checkError) {
-          // If check fails, package likely doesn't exist
-          if (verbose) {
-            console.log('ℹ️  No existing package found');
-          }
-        }
-      }
-    } catch (error) {
-      if (verbose) {
-        console.log('⚠️  Note: Could not check for existing package');
-      }
-    }
-    
-    // Step 5: Register the manifest with external location
-    if (verbose) {
-      console.log('📋 Registering sparse package with external location...');
+      console.log('🔐 Creating debug identity using native CLI...');
     }
     
     const currentDir = process.cwd();
-    const registerCommand = `powershell -Command "Add-AppxPackage -Path '${manifestPath}' -ExternalLocation '${currentDir}' -Register -ForceUpdateFromAnyVersion"`;
-    
-    execSync(registerCommand, { stdio: verbose ? 'inherit' : 'pipe' });
+    await callWinsdkCli([
+      'create-debug-identity',
+      electronExePath,
+      '--location', currentDir,
+      verbose ? '-v' : ''
+    ], { verbose });
     
     if (verbose) {
-      console.log('✅ Sparse package registered successfully');
+      console.log('✅ Debug identity created and package registered successfully');
+    }
+    
+    // Determine the manifest path after CLI execution
+    const msixDebugDir = path.resolve('.winsdk/debug');
+    const manifestPath = path.join(msixDebugDir, 'appxmanifest.xml');
+    
+    // Read the manifest to extract package details for the result
+    let packageName, publisher, applicationId;
+    try {
+      const manifestContent = await fs.readFile(manifestPath, 'utf8');
+      const nameMatch = manifestContent.match(/<Identity[^>]*Name\s*=\s*["']([^"']*)["']/i);
+      const publisherMatch = manifestContent.match(/<Identity[^>]*Publisher\s*=\s*["']([^"']*)["']/i);
+      const applicationMatch = manifestContent.match(/<Application[^>]*Id\s*=\s*["']([^"']*)["']/i);
+      
+      packageName = nameMatch ? nameMatch[1] : 'Unknown';
+      publisher = publisherMatch ? publisherMatch[1] : 'Unknown';
+      applicationId = applicationMatch ? applicationMatch[1] : 'Unknown';
+    } catch (error) {
+      packageName = publisher = applicationId = 'Unknown';
     }
     
     const result = {
@@ -203,9 +141,9 @@ async function addElectronDebugIdentity(options = {}) {
       backupPath: electronBackupPath,
       manifestPath,
       assetsDir: path.join(msixDebugDir, 'Assets'),
-      packageName: identityResult.packageName,
-      publisher: identityResult.publisher,
-      applicationId: identityResult.applicationId
+      packageName,
+      publisher,
+      applicationId
     };
     
     if (verbose) {

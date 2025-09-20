@@ -37,15 +37,15 @@ internal sealed class PackageInstallationService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The installed version</returns>
     public async Task<string> InstallPackageAsync(
-        string winsdkDir, 
-        string packageName, 
-        string? version = null, 
-        bool includeExperimental = false, 
-        bool quiet = false, 
+        string winsdkDir,
+        string packageName,
+        string? version = null,
+        bool includeExperimental = false,
+        bool quiet = false,
         CancellationToken cancellationToken = default)
     {
         var packagesDir = Path.Combine(winsdkDir, "packages");
-        
+
         // Ensure nuget.exe is available
         await _nugetService.EnsureNugetExeAsync(winsdkDir, cancellationToken);
 
@@ -71,7 +71,7 @@ internal sealed class PackageInstallationService
         {
             Console.WriteLine($"{UiSymbols.Package} Installing {packageName} {version}...");
         }
-        
+
         await _nugetService.InstallPackageAsync(winsdkDir, packageName, version, packagesDir, cancellationToken);
         return version;
     }
@@ -131,7 +131,7 @@ internal sealed class PackageInstallationService
             {
                 version = await _nugetService.GetLatestVersionAsync(packageName, includeExperimental, cancellationToken);
             }
-            
+
             // Check if already installed
             var expectedFolder = Path.Combine(packagesDir, $"{packageName}.{version}");
             if (Directory.Exists(expectedFolder))
@@ -149,7 +149,7 @@ internal sealed class PackageInstallationService
             {
                 Console.WriteLine($"  {UiSymbols.Bullet} {packageName} {version}");
             }
-            
+
             await _nugetService.InstallPackageAsync(winsdkDir, packageName, version, packagesDir, cancellationToken);
             installedVersions[packageName] = version;
         }
@@ -178,15 +178,15 @@ internal sealed class PackageInstallationService
         try
         {
             InitializeWorkspace(winsdkDir);
-            
+
             var installedVersion = await InstallPackageAsync(
-                winsdkDir, 
-                packageName, 
-                version: version, 
-                includeExperimental, 
-                quiet, 
+                winsdkDir,
+                packageName,
+                version: version,
+                includeExperimental,
+                quiet,
                 cancellationToken);
-            
+
             return true;
         }
         catch (Exception ex)

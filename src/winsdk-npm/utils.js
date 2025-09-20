@@ -23,11 +23,11 @@ function getProjectRootDir(startDir = process.cwd()) {
         const packageJsonPath = path.join(currentDir, 'package.json');
         
         if (fs.existsSync(packageJsonPath)) {
-            // During npm install, skip the windows-sdks package itself
+            // During npm install, skip the windows-sdk package itself
             try {
                 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-                if (packageJson.name === 'windows-sdks' && process.env.npm_config_prefix) {
-                    // This is the windows-sdks package itself, keep looking up
+                if (packageJson.name === 'windows-sdk' && process.env.npm_config_prefix) {
+                    // This is the windows-sdk package itself, keep looking up
                     const parentDir = path.dirname(currentDir);
                     if (parentDir === currentDir) {
                         throw new Error('No consumer package.json found in the directory tree');

@@ -146,4 +146,4 @@ native/build/
 *.pfx
 
 # Windows SDK packages and generated files
-.winsdk/
+.winsdk/debug

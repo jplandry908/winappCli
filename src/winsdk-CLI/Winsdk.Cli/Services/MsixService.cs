@@ -8,12 +8,14 @@ namespace Winsdk.Cli;
 internal class MsixService
 {
     private readonly BuildToolsService _buildToolsService;
+    private readonly PowerShellService _powerShellService;
 
     public MsixService(BuildToolsService buildToolsService)
     {
         _buildToolsService = buildToolsService;
+        _powerShellService = new PowerShellService();
     }
-    
+
     /// <summary>
     /// Parses an AppX manifest file and extracts the package identity information
     /// </summary>
@@ -57,18 +59,23 @@ internal class MsixService
         return new MsixIdentityResult(packageName, publisher, applicationId);
     }
 
-    public async Task<MsixIdentityResult> AddMsixIdentityToExeAsync(string exePath, string appxManifestPath, string? tempDir = null, bool verbose = true, CancellationToken cancellationToken = default)
+    public async Task<MsixIdentityResult> AddMsixIdentityToExeAsync(string exePath, string appxManifestPath, string? applicationLocation = null, bool verbose = true, CancellationToken cancellationToken = default)
     {
+        if (!Path.IsPathRooted(appxManifestPath))
+        {
+            appxManifestPath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), appxManifestPath));
+        }
+
         // Validate inputs
         if (!File.Exists(exePath))
+        {
             throw new FileNotFoundException($"Executable not found at: {exePath}");
+        }
 
         if (!File.Exists(appxManifestPath))
-            throw new FileNotFoundException($"AppX manifest not found at: {appxManifestPath}");
-
-        var workingDir = tempDir ?? Path.GetDirectoryName(exePath)!;
-        var tempManifestPath = Path.Combine(workingDir, "temp_extracted.manifest");
-        var combinedManifestPath = Path.Combine(workingDir, "combined.manifest");
+        {
+            throw new FileNotFoundException($"AppX manifest not found at: {appxManifestPath}. You can generate one using 'winsdk manifest generate'.");
+        }
 
         if (verbose)
         {
@@ -76,19 +83,42 @@ internal class MsixService
             Console.WriteLine($"Using AppX manifest: {appxManifestPath}");
         }
 
+        // Generate sparse package structure
+        var (debugManifestPath, debugIdentity) = await GenerateSparsePackageStructureAsync(
+            appxManifestPath, 
+            exePath,
+            applicationLocation, 
+            verbose, 
+            cancellationToken);
+
+        // Update executable with debug identity
+        await EmbedMsixIdentityToExeAsync(exePath, debugIdentity, applicationLocation, verbose, cancellationToken);
+
+        // Register the debug appxmanifest
+        var workingDirectory = applicationLocation ?? Path.GetDirectoryName(exePath) ?? Directory.GetCurrentDirectory();
+        
+        // Unregister any existing package first
+        await UnregisterExistingPackageAsync(debugIdentity.PackageName, verbose, cancellationToken);
+        
+        // Register the new debug manifest with external location
+        await RegisterSparsePackageAsync(debugManifestPath, workingDirectory, verbose, cancellationToken);
+
+        return new MsixIdentityResult(debugIdentity.PackageName, debugIdentity.Publisher, debugIdentity.ApplicationId);
+    }
+
+    private async Task EmbedMsixIdentityToExeAsync(string exePath, MsixIdentityResult identityInfo, string? applicationLocation, bool verbose, CancellationToken cancellationToken)
+    {
+        var workingDir = applicationLocation ?? Path.GetDirectoryName(exePath)!;
+        var tempManifestPath = Path.Combine(workingDir, "temp_extracted.manifest");
+        var combinedManifestPath = Path.Combine(workingDir, "combined.manifest");
+
         try
         {
-            // Parse the AppX manifest to extract identity information
-            var identityInfo = await ParseAppxManifestAsync(appxManifestPath, cancellationToken);
-            var packageName = identityInfo.PackageName;
-            var publisher = identityInfo.Publisher;
-            var applicationId = identityInfo.ApplicationId;
-
             // Create the MSIX element for the win32 manifest
             var msixElement = $@"<msix xmlns=""urn:schemas-microsoft-com:msix.v1""
-            publisher=""{SecurityElement.Escape(publisher)}""
-            packageName=""{SecurityElement.Escape(packageName)}""
-            applicationId=""{SecurityElement.Escape(applicationId)}""
+            publisher=""{SecurityElement.Escape(identityInfo.Publisher)}""
+            packageName=""{SecurityElement.Escape(identityInfo.PackageName)}""
+            applicationId=""{SecurityElement.Escape(identityInfo.ApplicationId)}""
         />";
 
             if (verbose)
@@ -148,10 +178,10 @@ internal class MsixService
             {
                 // Create a new basic manifest with MSIX identity
                 finalManifest = $@"<?xml version=""1.0"" encoding=""UTF-8""?>
-<assembly xmlns=""urn:schemas-microsoft-com:asm.v1"" manifestVersion=""1.0"">
-  {msixElement}
-  <assemblyIdentity version=""1.0.0.0"" name=""{SecurityElement.Escape(packageName)}"" type=""win32""/>
-</assembly>";
+    <assembly xmlns=""urn:schemas-microsoft-com:asm.v1"" manifestVersion=""1.0"">
+      {msixElement}
+      <assemblyIdentity version=""1.0.0.0"" name=""{SecurityElement.Escape(identityInfo.PackageName)}"" type=""win32""/>
+    </assembly>";
             }
 
             // Write the combined manifest
@@ -175,8 +205,6 @@ internal class MsixService
 
             // Clean up combined manifest file
             TryDeleteFile(combinedManifestPath);
-
-            return new MsixIdentityResult(packageName, publisher, applicationId);
         }
         catch (Exception ex)
         {
@@ -294,16 +322,16 @@ internal class MsixService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Result containing the MSIX path and signing status</returns>
     public async Task<CreateMsixPackageResult> CreateMsixPackageAsync(
-        string inputFolder, 
-        string outputFolder, 
-        string? packageName = null, 
-        bool skipPri = false, 
-        bool autoSign = false, 
-        string? certificatePath = null, 
-        string certificatePassword = "password", 
-        bool generateDevCert = false, 
-        bool installDevCert = false, 
-        string? publisher = null, 
+        string inputFolder,
+        string outputFolder,
+        string? packageName = null,
+        bool skipPri = false,
+        bool autoSign = false,
+        string? certificatePath = null,
+        string certificatePassword = "password",
+        bool generateDevCert = false,
+        bool installDevCert = false,
+        string? publisher = null,
         bool verbose = true,
         CancellationToken cancellationToken = default)
     {
@@ -509,4 +537,403 @@ internal class MsixService
 
         return null;
     }
+
+    /// <summary>
+    /// Generates a sparse package structure for debug purposes
+    /// </summary>
+    /// <param name="originalManifestPath">Path to the original appxmanifest.xml</param>
+    /// <param name="executablePath">Path to the executable that the manifest should reference</param>
+    /// <param name="baseDirectory">Base directory to create the debug structure in</param>
+    /// <param name="verbose">Enable verbose logging</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Tuple containing the debug manifest path and modified identity info</returns>
+    public async Task<(string debugManifestPath, MsixIdentityResult debugIdentity)> GenerateSparsePackageStructureAsync(
+        string originalManifestPath, 
+        string executablePath,
+        string? baseDirectory = null, 
+        bool verbose = true, 
+        CancellationToken cancellationToken = default)
+    {
+        var workingDir = baseDirectory ?? Directory.GetCurrentDirectory();
+        var winsdkDir = Path.Combine(workingDir, ".winsdk");
+        var debugDir = Path.Combine(winsdkDir, "debug");
+
+        if (verbose)
+        {
+            Console.WriteLine($"🔧 Creating sparse package structure in: {debugDir}");
+        }
+
+        // Step 1: Create debug directory, removing existing one if present
+        if (Directory.Exists(debugDir))
+        {
+            if (verbose)
+            {
+                Console.WriteLine("🗑️  Removing existing debug directory...");
+            }
+            Directory.Delete(debugDir, recursive: true);
+        }
+
+        Directory.CreateDirectory(debugDir);
+        if (verbose)
+        {
+            Console.WriteLine("📁 Created debug directory");
+        }
+
+        // Step 2: Parse original manifest to get identity and assets
+        var originalManifestContent = await File.ReadAllTextAsync(originalManifestPath, Encoding.UTF8, cancellationToken);
+        var originalIdentity = await ParseAppxManifestAsync(originalManifestPath, cancellationToken);
+
+        // Step 3: Create debug identity with ".debug" suffix
+        var debugIdentity = CreateDebugIdentity(originalIdentity);
+
+        // Step 4: Modify manifest for sparse packaging and debug identity
+        var debugManifestContent = await CreateDebugManifestContentAsync(
+            originalManifestContent, 
+            originalIdentity, 
+            debugIdentity, 
+            executablePath,
+            baseDirectory,
+            verbose, 
+            cancellationToken);
+
+        // Step 5: Write debug manifest
+        var debugManifestPath = Path.Combine(debugDir, "appxmanifest.xml");
+        await File.WriteAllTextAsync(debugManifestPath, debugManifestContent, Encoding.UTF8, cancellationToken);
+        
+        if (verbose)
+        {
+            Console.WriteLine($"📄 Created debug manifest: {debugManifestPath}");
+        }
+
+        // Step 6: Copy all assets
+        await CopyAllAssetsAsync(originalManifestPath, debugDir, verbose, cancellationToken);
+
+        return (debugManifestPath, debugIdentity);
+    }
+
+    /// <summary>
+    /// Creates a debug version of the identity by appending ".debug" to package name and application ID
+    /// </summary>
+    private static MsixIdentityResult CreateDebugIdentity(MsixIdentityResult originalIdentity)
+    {
+        var debugPackageName = originalIdentity.PackageName.EndsWith(".debug")
+            ? originalIdentity.PackageName
+            : $"{originalIdentity.PackageName}.debug";
+
+        var debugApplicationId = originalIdentity.ApplicationId.EndsWith(".debug")
+            ? originalIdentity.ApplicationId
+            : $"{originalIdentity.ApplicationId}.debug";
+
+        return new MsixIdentityResult(debugPackageName, originalIdentity.Publisher, debugApplicationId);
+    }
+
+    /// <summary>
+    /// Creates the content for the debug manifest with sparse packaging and debug identity
+    /// </summary>
+    private Task<string> CreateDebugManifestContentAsync(
+        string originalManifestContent,
+        MsixIdentityResult originalIdentity,
+        MsixIdentityResult debugIdentity,
+        string executablePath,
+        string? baseDirectory,
+        bool verbose,
+        CancellationToken cancellationToken)
+    {
+        var modifiedContent = originalManifestContent;
+
+        // Replace package identity attributes
+        modifiedContent = Regex.Replace(
+            modifiedContent,
+            @"(<Identity[^>]*Name\s*=\s*)[""']([^""']*)[""']",
+            $@"$1""{debugIdentity.PackageName}""",
+            RegexOptions.IgnoreCase);
+
+        // Replace application ID
+        modifiedContent = Regex.Replace(
+            modifiedContent,
+            @"(<Application[^>]*Id\s*=\s*)[""']([^""']*)[""']",
+            $@"$1""{debugIdentity.ApplicationId}""",
+            RegexOptions.IgnoreCase);
+
+        // Replace executable path with relative path from package root
+        var workingDir = baseDirectory ?? Directory.GetCurrentDirectory();
+        string relativeExecutablePath;
+        
+        try
+        {
+            // Calculate relative path from the working directory (package root) to the executable
+            relativeExecutablePath = Path.GetRelativePath(workingDir, executablePath);
+            
+            // Ensure we use forward slashes for consistency in manifest
+            relativeExecutablePath = relativeExecutablePath.Replace('\\', '/');
+        }
+        catch
+        {
+            // Fallback to just the filename if relative path calculation fails
+            relativeExecutablePath = Path.GetFileName(executablePath);
+        }
+        
+        modifiedContent = Regex.Replace(
+            modifiedContent,
+            @"(<Application[^>]*Executable\s*=\s*)[""']([^""']*)[""']",
+            $@"$1""{relativeExecutablePath}""",
+            RegexOptions.IgnoreCase);
+
+        // Add required namespaces for sparse packaging
+        if (!modifiedContent.Contains("xmlns:uap10"))
+        {
+            modifiedContent = Regex.Replace(
+                modifiedContent,
+                @"(<Package[^>]*)(>)",
+                @"$1 xmlns:uap10=""http://schemas.microsoft.com/appx/manifest/uap/windows10/10""$2",
+                RegexOptions.IgnoreCase);
+        }
+        
+        if (!modifiedContent.Contains("xmlns:desktop6"))
+        {
+            modifiedContent = Regex.Replace(
+                modifiedContent,
+                @"(<Package[^>]*)(>)",
+                @"$1 xmlns:desktop6=""http://schemas.microsoft.com/appx/manifest/desktop/windows10/6""$2",
+                RegexOptions.IgnoreCase);
+        }
+
+        // Add sparse package properties
+        if (!modifiedContent.Contains("<uap10:AllowExternalContent>"))
+        {
+            modifiedContent = Regex.Replace(
+                modifiedContent,
+                @"(\s*</Properties>)",
+                @"    <uap10:AllowExternalContent>true</uap10:AllowExternalContent>
+    <desktop6:RegistryWriteVirtualization>disabled</desktop6:RegistryWriteVirtualization>
+$1",
+                RegexOptions.IgnoreCase);
+        }
+
+        // Ensure Application has sparse packaging attributes
+        if (!modifiedContent.Contains("uap10:TrustLevel"))
+        {
+            modifiedContent = Regex.Replace(
+                modifiedContent,
+                @"(<Application[^>]*)(>)",
+                @"$1 uap10:TrustLevel=""mediumIL"" uap10:RuntimeBehavior=""packagedClassicApp""$2",
+                RegexOptions.IgnoreCase);
+        }
+
+        // Remove EntryPoint if present (not needed for sparse packages)
+        modifiedContent = Regex.Replace(
+            modifiedContent,
+            @"\s*EntryPoint\s*=\s*[""'][^""']*[""']",
+            "",
+            RegexOptions.IgnoreCase);
+
+        // Add AppListEntry="none" to VisualElements if not present
+        if (!modifiedContent.Contains("AppListEntry"))
+        {
+            modifiedContent = Regex.Replace(
+                modifiedContent,
+                @"(<uap:VisualElements[^>]*)(>)",
+                @"$1 AppListEntry=""none""$2",
+                RegexOptions.IgnoreCase);
+        }
+
+        // Add sparse-specific capabilities if not present
+        if (!modifiedContent.Contains("unvirtualizedResources"))
+        {
+            modifiedContent = Regex.Replace(
+                modifiedContent,
+                @"(\s*<rescap:Capability Name=""runFullTrust"" />)",
+                @"$1
+    <rescap:Capability Name=""unvirtualizedResources""/>
+    <rescap:Capability Name=""allowElevation"" />",
+                RegexOptions.IgnoreCase);
+        }
+
+        if (verbose)
+        {
+            Console.WriteLine("✏️  Modified manifest for sparse packaging and debug identity");
+        }
+
+        return Task.FromResult(modifiedContent);
+    }
+
+    /// <summary>
+    /// Copies all files from the original manifest directory to the debug directory, excluding debug folders
+    /// </summary>
+    private async Task CopyAllAssetsAsync(string originalManifestPath, string debugDir, bool verbose, CancellationToken cancellationToken)
+    {
+        var originalManifestDir = Path.GetDirectoryName(originalManifestPath)!;
+
+        if (verbose)
+        {
+            Console.WriteLine($"📋 Copying all files from: {originalManifestDir}");
+        }
+
+        var filesCopied = await CopyDirectoryRecursiveAsync(originalManifestDir, debugDir, verbose);
+
+        if (verbose)
+        {
+            Console.WriteLine($"✅ Copied {filesCopied} files to debug directory");
+        }
+    }
+
+    /// <summary>
+    /// Recursively copies files and directories, excluding debug directories and manifest files
+    /// </summary>
+    private static async Task<int> CopyDirectoryRecursiveAsync(string sourceDir, string targetDir, bool verbose)
+    {
+        var filesCopied = 0;
+        
+        // Get all files in current directory
+        var files = Directory.GetFiles(sourceDir);
+        
+        foreach (var file in files)
+        {
+            var fileName = Path.GetFileName(file);
+            
+            // Skip appxmanifest.xml as we've already created the debug version
+            if (fileName.Equals("appxmanifest.xml", StringComparison.OrdinalIgnoreCase))
+            {
+                if (verbose)
+                {
+                    Console.WriteLine($"⏭️  Skipping manifest file: {fileName}");
+                }
+                continue;
+            }
+            
+            var targetFile = Path.Combine(targetDir, fileName);
+            
+            // Ensure target directory exists
+            Directory.CreateDirectory(targetDir);
+            
+            File.Copy(file, targetFile, overwrite: true);
+            filesCopied++;
+            
+            if (verbose)
+            {
+                var relativePath = Path.GetRelativePath(sourceDir, file);
+                Console.WriteLine($"📁 Copied: {relativePath}");
+            }
+        }
+
+        // Get all subdirectories and copy them recursively
+        var directories = Directory.GetDirectories(sourceDir);
+        
+        foreach (var directory in directories)
+        {
+            var dirName = Path.GetFileName(directory);
+            
+            // Skip debug directories to avoid copying existing debug folders
+            if (dirName.Equals("debug", StringComparison.OrdinalIgnoreCase) || 
+                dirName.Contains("debug", StringComparison.OrdinalIgnoreCase))
+            {
+                if (verbose)
+                {
+                    Console.WriteLine($"⏭️  Skipping debug directory: {dirName}");
+                }
+                continue;
+            }
+            
+            var targetSubDir = Path.Combine(targetDir, dirName);
+            var subDirFilesCopied = await CopyDirectoryRecursiveAsync(directory, targetSubDir, verbose);
+            filesCopied += subDirFilesCopied;
+        }
+        
+        return filesCopied;
+    }
+
+    /// <summary>
+    /// Checks if a package with the given name exists and unregisters it if found
+    /// </summary>
+    /// <param name="packageName">The name of the package to check and unregister</param>
+    /// <param name="verbose">Enable verbose logging</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>True if package was found and unregistered, false if no package was found</returns>
+    public async Task<bool> UnregisterExistingPackageAsync(string packageName, bool verbose = true, CancellationToken cancellationToken = default)
+    {
+        if (verbose)
+        {
+            Console.WriteLine("🗑️  Checking for existing package...");
+        }
+
+        try
+        {
+            // First check if package exists
+            var checkCommand = $"Get-AppxPackage -Name '{packageName}'";
+            var (_, checkResult) = await _powerShellService.RunCommandAsync(checkCommand, verbose: false, cancellationToken: cancellationToken);
+
+            if (!string.IsNullOrWhiteSpace(checkResult))
+            {
+                // Package exists, remove it
+                if (verbose)
+                {
+                    Console.WriteLine($"📦 Found existing package '{packageName}', removing it...");
+                }
+
+                var unregisterCommand = $"Get-AppxPackage -Name '{packageName}' | Remove-AppxPackage";
+                await _powerShellService.RunCommandAsync(unregisterCommand, verbose: verbose, cancellationToken: cancellationToken);
+
+                if (verbose)
+                {
+                    Console.WriteLine("✅ Existing package unregistered successfully");
+                }
+                return true;
+            }
+            else
+            {
+                // No package found
+                if (verbose)
+                {
+                    Console.WriteLine("ℹ️  No existing package found");
+                }
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            // If check fails, package likely doesn't exist or we don't have permission
+            if (verbose)
+            {
+                Console.WriteLine($"ℹ️  Could not check for existing package: {ex.Message}");
+            }
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Registers a sparse package with external location using Add-AppxPackage
+    /// </summary>
+    /// <param name="manifestPath">Path to the appxmanifest.xml file</param>
+    /// <param name="externalLocation">External location path (typically the working directory)</param>
+    /// <param name="verbose">Enable verbose logging</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    public async Task RegisterSparsePackageAsync(string manifestPath, string externalLocation, bool verbose = true, CancellationToken cancellationToken = default)
+    {
+        if (verbose)
+        {
+            Console.WriteLine("📋 Registering sparse package with external location...");
+        }
+
+        var registerCommand = $"Add-AppxPackage -Path '{manifestPath}' -ExternalLocation '{externalLocation}' -Register -ForceUpdateFromAnyVersion";
+        
+        try
+        {
+            var (exitCode, _) = await _powerShellService.RunCommandAsync(registerCommand, verbose: verbose, cancellationToken: cancellationToken);
+
+            if (exitCode != 0)
+            {
+                throw new InvalidOperationException($"PowerShell command failed with exit code {exitCode}");
+            }
+
+            if (verbose)
+            {
+                Console.WriteLine("✅ Sparse package registered successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Failed to register sparse package: {ex.Message}", ex);
+        }
+    }
+
 }

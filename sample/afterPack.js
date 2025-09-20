@@ -1,6 +1,6 @@
 const fs = require('fs-extra');
 const path = require('path');
-const { addMsixIdentityToExe } = require('windows-sdks');
+const { addMsixIdentityToExe } = require('windows-sdk');
 
 module.exports = async (context) => {
   // context.electronPlatformName: 'win32', 'darwin', 'linux'

@@ -1,5 +1,5 @@
 {
-  "name": "windows-sdks",
+  "name": "windows-sdk",
   "version": "1.0.0",
   "description": "Windows SDK and BuildTools utilities for Node.js native addon development",
   "main": "index.js",
@@ -47,6 +47,7 @@
     "buildtools-utils.js",
     "msix-utils.js",
     "winsdk-cli-utils.js",
+    "global-winsdk-utils.js",
     "addon-utils.js",
     "addon-template/",
     "utils.js",
