@@ -15,7 +15,6 @@ internal class WorkspaceSetupOptions
     public bool AssumeYes { get; set; }
     public bool RequireExistingConfig { get; set; }
     public bool ForceLatestBuildTools { get; set; }
-    public string? TargetArchitecture { get; set; }
 }
 
 /// <summary>

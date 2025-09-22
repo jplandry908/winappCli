@@ -44,15 +44,6 @@ internal class SetupCommand : Command
         {
             Description = "Assume yes to all prompts"
         };
-        var archOption = new Option<Architecture>("--arch")
-        {
-            Description = "Target architecture",
-            DefaultValueFactory = (argumentResult) =>
-            {
-                // Default to host architecture
-                return RuntimeInformation.ProcessArchitecture == System.Runtime.InteropServices.Architecture.Arm64 ? Architecture.arm64 : Architecture.x64;
-            }
-        };
 
         Arguments.Add(baseDirectoryArgument);
         Options.Add(configDirOption);
@@ -61,7 +52,6 @@ internal class SetupCommand : Command
         Options.Add(noGitignoreOption);
         Options.Add(quietOption);
         Options.Add(yesOption);
-        Options.Add(archOption);
         Options.Add(Program.VerboseOption);
 
         SetAction(async (parseResult, ct) =>
@@ -73,7 +63,6 @@ internal class SetupCommand : Command
             var noGitignore = parseResult.GetValue(noGitignoreOption);
             var quiet = parseResult.GetValue(quietOption);
             var assumeYes = parseResult.GetValue(yesOption);
-            var arch = parseResult.GetRequiredValue(archOption);
             var verbose = parseResult.GetValue(Program.VerboseOption);
 
             if (quiet && verbose)
@@ -94,7 +83,6 @@ internal class SetupCommand : Command
                 IgnoreConfig = ignoreConfig,
                 NoGitignore = noGitignore,
                 AssumeYes = assumeYes,
-                TargetArchitecture = arch.ToString(),
                 RequireExistingConfig = false,
                 ForceLatestBuildTools = true
             };
