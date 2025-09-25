@@ -44,38 +44,49 @@ internal sealed class PackageLayoutService
         }
     }
 
-    public IEnumerable<string> FindWinmds(string pkgsDir)
+    public IEnumerable<string> FindWinmds(string pkgsDir, Dictionary<string, string> usedVersions)
     {
         var results = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var metadataDir in SafeEnumDirs(pkgsDir, "metadata", SearchOption.AllDirectories))
+        // Only search in package directories that were actually used
+        foreach (var (packageName, version) in usedVersions)
         {
-            foreach (var f in SafeEnumFiles(metadataDir, "*.winmd", SearchOption.TopDirectoryOnly))
-                results.Add(Path.GetFullPath(f));
+            var packageDir = Path.Combine(pkgsDir, $"{packageName}.{version}");
+            if (!Directory.Exists(packageDir))
+                continue;
 
-            var v18362 = Path.Combine(metadataDir, "10.0.18362.0");
-            foreach (var f in SafeEnumFiles(v18362, "*.winmd", SearchOption.TopDirectoryOnly))
-                results.Add(Path.GetFullPath(f));
-        }
+            // Search for metadata directories within this specific package
+            foreach (var metadataDir in SafeEnumDirs(packageDir, "metadata", SearchOption.AllDirectories))
+            {
+                foreach (var f in SafeEnumFiles(metadataDir, "*.winmd", SearchOption.TopDirectoryOnly))
+                    results.Add(Path.GetFullPath(f));
 
-        foreach (var libDir in SafeEnumDirs(pkgsDir, "lib", SearchOption.AllDirectories))
-        {
-            foreach (var f in SafeEnumFiles(libDir, "*.winmd", SearchOption.TopDirectoryOnly))
-                results.Add(Path.GetFullPath(f));
+                var v18362 = Path.Combine(metadataDir, "10.0.18362.0");
+                foreach (var f in SafeEnumFiles(v18362, "*.winmd", SearchOption.TopDirectoryOnly))
+                    results.Add(Path.GetFullPath(f));
+            }
 
-            var uap10 = Path.Combine(libDir, "uap10.0");
-            foreach (var f in SafeEnumFiles(uap10, "*.winmd", SearchOption.TopDirectoryOnly))
-                results.Add(Path.GetFullPath(f));
+            // Search for lib directories within this specific package
+            foreach (var libDir in SafeEnumDirs(packageDir, "lib", SearchOption.AllDirectories))
+            {
+                foreach (var f in SafeEnumFiles(libDir, "*.winmd", SearchOption.TopDirectoryOnly))
+                    results.Add(Path.GetFullPath(f));
 
-            var uap18362 = Path.Combine(libDir, "uap10.0.18362");
-            foreach (var f in SafeEnumFiles(uap18362, "*.winmd", SearchOption.TopDirectoryOnly))
-                results.Add(Path.GetFullPath(f));
-        }
+                var uap10 = Path.Combine(libDir, "uap10.0");
+                foreach (var f in SafeEnumFiles(uap10, "*.winmd", SearchOption.TopDirectoryOnly))
+                    results.Add(Path.GetFullPath(f));
 
-        foreach (var refDir in SafeEnumDirs(pkgsDir, "References", SearchOption.AllDirectories))
-        {
-            foreach (var f in SafeEnumFiles(refDir, "*.winmd", SearchOption.AllDirectories))
-                results.Add(Path.GetFullPath(f));
+                var uap18362 = Path.Combine(libDir, "uap10.0.18362");
+                foreach (var f in SafeEnumFiles(uap18362, "*.winmd", SearchOption.TopDirectoryOnly))
+                    results.Add(Path.GetFullPath(f));
+            }
+
+            // Search for References directories within this specific package
+            foreach (var refDir in SafeEnumDirs(packageDir, "References", SearchOption.AllDirectories))
+            {
+                foreach (var f in SafeEnumFiles(refDir, "*.winmd", SearchOption.AllDirectories))
+                    results.Add(Path.GetFullPath(f));
+            }
         }
 
         return results;

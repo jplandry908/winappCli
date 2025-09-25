@@ -4,11 +4,13 @@ internal sealed class PackageInstallationService
 {
     private readonly NugetService _nugetService;
     private readonly ConfigService _configService;
+    private readonly PackageCacheService _cacheService;
 
     public PackageInstallationService(ConfigService configService)
     {
         _nugetService = new NugetService();
         _configService = configService;
+        _cacheService = new PackageCacheService();
     }
 
     /// <summary>
@@ -36,7 +38,7 @@ internal sealed class PackageInstallationService
     /// <param name="quiet">Suppress progress messages</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The installed version</returns>
-    public async Task<string> InstallPackageAsync(
+    private async Task<string> InstallPackageAsync(
         string rootDirectory,
         string packageName,
         string? version = null,
@@ -95,7 +97,7 @@ internal sealed class PackageInstallationService
         CancellationToken cancellationToken = default)
     {
         var packagesDir = Path.Combine(rootDirectory, "packages");
-        var installedVersions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var allInstalledVersions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         // Ensure nuget.exe is available once for all packages
         if (!quiet)
@@ -140,7 +142,34 @@ internal sealed class PackageInstallationService
                 {
                     Console.WriteLine($"{UiSymbols.Skip}  {packageName} {version} already present");
                 }
-                installedVersions[packageName] = version;
+                
+                // Add the main package to installed versions
+                allInstalledVersions[packageName] = version;
+                
+                // Try to get cached information about what else was installed with this package
+                try
+                {
+                    var cachedPackages = await _cacheService.GetCachedPackageAsync(packageName, version, cancellationToken);
+                    foreach (var (cachedPkg, cachedVer) in cachedPackages)
+                    {
+                        if (allInstalledVersions.TryGetValue(cachedPkg, out var existingVersion))
+                        {
+                            if (NugetService.CompareVersions(cachedVer, existingVersion) > 0)
+                            {
+                                allInstalledVersions[cachedPkg] = cachedVer;
+                            }
+                        }
+                        else
+                        {
+                            allInstalledVersions[cachedPkg] = cachedVer;
+                        }
+                    }
+                }
+                catch (KeyNotFoundException)
+                {
+                    // Package not in cache yet, that's okay - just continue with main package
+                }
+                
                 continue;
             }
 
@@ -150,11 +179,27 @@ internal sealed class PackageInstallationService
                 Console.WriteLine($"  {UiSymbols.Bullet} {packageName} {version}");
             }
 
-            await _nugetService.InstallPackageAsync(rootDirectory, packageName, version, packagesDir, cancellationToken);
-            installedVersions[packageName] = version;
+            var installedVersions = await _nugetService.InstallPackageAsync(rootDirectory, packageName, version, packagesDir, cancellationToken);
+            foreach (var (pkg, ver) in installedVersions)
+            {
+                if (allInstalledVersions.TryGetValue(pkg, out var existingVersion))
+                {
+                    if (NugetService.CompareVersions(ver, existingVersion) > 0)
+                    {
+                        allInstalledVersions[pkg] = ver;
+                    }
+                }
+                else
+                {
+                    allInstalledVersions[pkg] = ver;
+                }
+            }
+
+            // Update cache with this package installation
+            await _cacheService.UpdatePackageAsync(packageName, version, installedVersions, quiet, cancellationToken);
         }
 
-        return installedVersions;
+        return allInstalledVersions;
     }
 
     /// <summary>

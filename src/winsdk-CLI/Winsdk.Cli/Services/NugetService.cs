@@ -61,8 +61,10 @@ internal class NugetService
         return list[^1];
     }
 
-    public async Task InstallPackageAsync(string winsdkDir, string package, string version, string outputDir, CancellationToken cancellationToken = default)
+    public async Task<Dictionary<string, string>> InstallPackageAsync(string winsdkDir, string package, string version, string outputDir, CancellationToken cancellationToken = default)
     {
+        var packages = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
         var nugetExe = Path.Combine(winsdkDir, "tools", "nuget.exe");
         if (!File.Exists(nugetExe))
         {
@@ -76,13 +78,14 @@ internal class NugetService
         if (Directory.Exists(expectedFolder))
         {
             Console.WriteLine($"{UiSymbols.Skip}  {package} {version} already present");
-            return;
+            packages[package] = version;
+            return packages;
         }
 
         var psi = new ProcessStartInfo
         {
             FileName = nugetExe,
-            Arguments = $"install {EscapeArg(package)} -Version {EscapeArg(version)} -OutputDirectory {Quote(outputDir)} -NonInteractive",
+            Arguments = $"install {EscapeArg(package)} -Version {EscapeArg(version)} -OutputDirectory {Quote(outputDir)} -NonInteractive -ForceEnglishOutput",
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -99,6 +102,34 @@ internal class NugetService
             Console.Error.WriteLine(stderr);
             throw new InvalidOperationException($"nuget install failed for {package} {version}");
         }
+
+        var lines = stdout.Split(['\r', '\n' ], StringSplitOptions.RemoveEmptyEntries);
+        foreach (var line in lines)
+        {
+            if (line.StartsWith("Successfully installed '", StringComparison.OrdinalIgnoreCase))
+            {
+                var parts = line.Split('\'', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 2)
+                {
+                    var installed = parts[1].Trim();
+                    var spaceIdx = installed.LastIndexOf(' ');
+                    if (spaceIdx > 0)
+                    {
+                        var installedName = installed[..spaceIdx];
+                        var installedVersion = installed[(spaceIdx + 1)..];
+                        packages[installedName] = installedVersion;
+                        Console.WriteLine($"{UiSymbols.Check}  Installed {installedName} {installedVersion}");
+                    }
+                }
+            }
+        }
+
+        if (!packages.ContainsKey(package))
+        {
+            throw new InvalidOperationException($"Could not determine installed version for {package} {version}");
+        }
+
+        return packages;
     }
 
     private static string Quote(string path) => $"\"{path}\"";
@@ -110,7 +141,7 @@ internal class NugetService
         return v;
     }
 
-    private static int CompareVersions(string a, string b)
+    public static int CompareVersions(string a, string b)
     {
         var ap = a.Split('.', '-', StringSplitOptions.RemoveEmptyEntries);
         var bp = b.Split('.', '-', StringSplitOptions.RemoveEmptyEntries);

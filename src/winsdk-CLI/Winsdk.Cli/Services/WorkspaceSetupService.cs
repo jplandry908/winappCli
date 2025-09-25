@@ -35,8 +35,8 @@ internal class WorkspaceSetupService
             var configService = new ConfigService(options.ConfigDir);
             var buildToolsService = new BuildToolsService(configService);
             var packageService = new PackageInstallationService(configService);
-            var cppwinrt = new CppWinrtService();
-            var layout = new PackageLayoutService();
+            var cppwinrtService = new CppWinrtService();
+            var layoutService = new PackageLayoutService();
 
             // Step 1: Handle configuration requirements
             if (options.RequireExistingConfig && !configService.Exists())
@@ -261,7 +261,7 @@ internal class WorkspaceSetupService
             }
 
             // Step 5: Run cppwinrt and set up projections
-            var cppWinrtExe = cppwinrt.FindCppWinrtExe(pkgsDir, usedVersions);
+            var cppWinrtExe = cppwinrtService.FindCppWinrtExe(pkgsDir, usedVersions);
             if (cppWinrtExe is null)
             {
                 Console.Error.WriteLine("cppwinrt.exe not found in installed packages.");
@@ -278,7 +278,7 @@ internal class WorkspaceSetupService
             {
                 Console.WriteLine($"{UiSymbols.Files} Copying headers → {includeOut}");
             }
-            layout.CopyIncludesFromPackages(pkgsDir, includeOut);
+            layoutService.CopyIncludesFromPackages(pkgsDir, includeOut);
             Console.WriteLine($"{UiSymbols.Check} Headers ready → {includeOut}");
 
             var libRoot = Path.Combine(localWinsdkDir, "lib");
@@ -286,7 +286,7 @@ internal class WorkspaceSetupService
             {
                 Console.WriteLine($"{UiSymbols.Books} Copying import libs by arch → {libRoot}");
             }
-            layout.CopyLibsAllArch(pkgsDir, libRoot);
+            layoutService.CopyLibsAllArch(pkgsDir, libRoot);
             var libArchs = Directory.Exists(libRoot) ? string.Join(", ", Directory.EnumerateDirectories(libRoot).Select(Path.GetFileName)) : "(none)";
             Console.WriteLine($"{UiSymbols.Books} Import libs ready for archs: {libArchs}");
 
@@ -295,7 +295,7 @@ internal class WorkspaceSetupService
             {
                 Console.WriteLine($"{UiSymbols.Gear} Copying runtime binaries by arch → {binRoot}");
             }
-            layout.CopyRuntimesAllArch(pkgsDir, binRoot);
+            layoutService.CopyRuntimesAllArch(pkgsDir, binRoot);
             var binArchs = Directory.Exists(binRoot) ? string.Join(", ", Directory.EnumerateDirectories(binRoot).Select(Path.GetFileName)) : "(none)";
             Console.WriteLine($"{UiSymbols.Gear} Runtime binaries ready for archs: {binArchs}");
 
@@ -329,7 +329,7 @@ internal class WorkspaceSetupService
             {
                 Console.WriteLine($"{UiSymbols.Search} Searching for .winmd metadata...");
             }
-            var winmds = layout.FindWinmds(pkgsDir).ToList();
+            var winmds = layoutService.FindWinmds(pkgsDir, usedVersions).ToList();
             if (!options.Quiet)
             {
                 Console.WriteLine($"{UiSymbols.Search} Found {winmds.Count} .winmd");
@@ -345,7 +345,7 @@ internal class WorkspaceSetupService
             {
                 Console.WriteLine($"{UiSymbols.Gear} Generating C++/WinRT projections...");
             }
-            await CppWinrtRunner.RunWithRspAsync(cppWinrtExe, winmds, includeOut, localWinsdkDir, verbose: !options.Quiet, cancellationToken: cancellationToken);
+            await cppwinrtService.RunWithRspAsync(cppWinrtExe, winmds, includeOut, localWinsdkDir, verbose: !options.Quiet, cancellationToken: cancellationToken);
             Console.WriteLine($"{UiSymbols.Check} C++/WinRT headers generated → {includeOut}");
 
             // Step 6: Handle BuildTools
@@ -427,7 +427,11 @@ internal class WorkspaceSetupService
             {
                 // Setup: Save winsdk.yaml with used versions
                 var finalConfig = new WinsdkConfig();
-                foreach (var kvp in usedVersions)
+                // only from SDK_PACKAGES
+                var versionsToSave = usedVersions
+                    .Where(kvp => NugetService.SDK_PACKAGES.Contains(kvp.Key, StringComparer.OrdinalIgnoreCase))
+                    .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+                foreach (var kvp in versionsToSave)
                 {
                     finalConfig.SetVersion(kvp.Key, kvp.Value);
                 }
