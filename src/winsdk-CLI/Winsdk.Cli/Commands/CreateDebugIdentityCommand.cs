@@ -15,6 +15,10 @@ internal class CreateDebugIdentityCommand : Command
             Description = "Path to the appxmanifest.xml",
             DefaultValueFactory = (argumentResult) => ".\\appxmanifest.xml"
         };
+        var noInstallOption = new Option<bool>("--no-install")
+        {
+            Description = "Do not install the package after creation."
+        };
         var locationOption = new Option<string>("--location")
         {
             Description = "Root path of the application. Default is parent directory of the executable."
@@ -22,6 +26,7 @@ internal class CreateDebugIdentityCommand : Command
 
         Arguments.Add(executableArgument);
         Options.Add(manifestOption);
+        Options.Add(noInstallOption);
         Options.Add(locationOption);
         Options.Add(Program.VerboseOption);
 
@@ -29,6 +34,7 @@ internal class CreateDebugIdentityCommand : Command
         {
             var executablePath = parseResult.GetRequiredValue(executableArgument);
             var manifest = parseResult.GetRequiredValue(manifestOption);
+            var noInstall = parseResult.GetValue(noInstallOption);
             var location = parseResult.GetValue(locationOption);
             var verbose = parseResult.GetValue(Program.VerboseOption);
 
@@ -44,7 +50,7 @@ internal class CreateDebugIdentityCommand : Command
 
             try
             {
-                var result = await msixService.AddMsixIdentityToExeAsync(executablePath, manifest, location, verbose, ct);
+                var result = await msixService.AddMsixIdentityToExeAsync(executablePath, manifest, noInstall, location, verbose, ct);
 
                 Console.WriteLine("✅ MSIX identity added successfully!");
                 Console.WriteLine($"📦 Package: {result.PackageName}");

@@ -27,6 +27,8 @@ async function addMsixIdentityToExe(exePath, appxManifestPath, options = {}) {
     args.push('--manifest', appxManifestPath);
   }
 
+  args.push('--no-install');
+
   // Add optional arguments
   if (location) {
     args.push('--location', location);

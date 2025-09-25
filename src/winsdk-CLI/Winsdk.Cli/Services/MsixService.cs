@@ -59,7 +59,7 @@ internal class MsixService
         return new MsixIdentityResult(packageName, publisher, applicationId);
     }
 
-    public async Task<MsixIdentityResult> AddMsixIdentityToExeAsync(string exePath, string appxManifestPath, string? applicationLocation = null, bool verbose = true, CancellationToken cancellationToken = default)
+    public async Task<MsixIdentityResult> AddMsixIdentityToExeAsync(string exePath, string appxManifestPath, bool noInstall, string? applicationLocation = null, bool verbose = true, CancellationToken cancellationToken = default)
     {
         if (!Path.IsPathRooted(appxManifestPath))
         {
@@ -94,14 +94,24 @@ internal class MsixService
         // Update executable with debug identity
         await EmbedMsixIdentityToExeAsync(exePath, debugIdentity, applicationLocation, verbose, cancellationToken);
 
-        // Register the debug appxmanifest
-        var workingDirectory = applicationLocation ?? Path.GetDirectoryName(exePath) ?? Directory.GetCurrentDirectory();
-        
-        // Unregister any existing package first
-        await UnregisterExistingPackageAsync(debugIdentity.PackageName, verbose, cancellationToken);
-        
-        // Register the new debug manifest with external location
-        await RegisterSparsePackageAsync(debugManifestPath, workingDirectory, verbose, cancellationToken);
+        if (noInstall)
+        {
+            if (verbose)
+            {
+                Console.WriteLine("Skipping package installation as per --no-install option.");
+            }
+        }
+        else
+        {
+            // Register the debug appxmanifest
+            var workingDirectory = applicationLocation ?? Path.GetDirectoryName(exePath) ?? Directory.GetCurrentDirectory();
+            
+            // Unregister any existing package first
+            await UnregisterExistingPackageAsync(debugIdentity.PackageName, verbose, cancellationToken);
+            
+            // Register the new debug manifest with external location
+            await RegisterSparsePackageAsync(debugManifestPath, workingDirectory, verbose, cancellationToken);
+        }
 
         return new MsixIdentityResult(debugIdentity.PackageName, debugIdentity.Publisher, debugIdentity.ApplicationId);
     }
