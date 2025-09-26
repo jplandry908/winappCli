@@ -15,8 +15,8 @@ function getWinsdkCliPath() {
     // Distribution build (single-file executable)
     path.join(__dirname, `bin/${arch}/Winsdk.Cli.exe`),
     // Development builds (when building from source)
-    path.join(__dirname, `../winsdk-CLI/Winsdk.Cli/bin/Debug/net9.0/${arch}/Winsdk.Cli.exe`),
-    path.join(__dirname, `../winsdk-CLI/Winsdk.Cli/bin/Release/net9.0/${arch}/Winsdk.Cli.exe`),
+    path.join(__dirname, `../winsdk-CLI/Winsdk.Cli/bin/Debug/net9.0-windows/${arch}/Winsdk.Cli.exe`),
+    path.join(__dirname, `../winsdk-CLI/Winsdk.Cli/bin/Release/net9.0-windows/${arch}/Winsdk.Cli.exe`),
     // Global installation
     'winsdk.exe'
   ];

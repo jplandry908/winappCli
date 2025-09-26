@@ -25,8 +25,8 @@ endwhile()
 
 if(NOT "${_repo_root}" STREQUAL "")
     # Use the dotnet publish output (publish folder) as the canonical local CLI location
-    set(LOCAL_CLI_RELEASE "${_repo_root}/src/winsdk-CLI/Winsdk.Cli/bin/Release/net9.0/${WINSDK_RUNTIME_ARCH}/publish/Winsdk.Cli.exe")
-    set(LOCAL_CLI_DEBUG   "${_repo_root}/src/winsdk-CLI/Winsdk.Cli/bin/Debug/net9.0/${WINSDK_RUNTIME_ARCH}/publish/Winsdk.Cli.exe")
+    set(LOCAL_CLI_RELEASE "${_repo_root}/src/winsdk-CLI/Winsdk.Cli/bin/Release/net9.0-windows/${WINSDK_RUNTIME_ARCH}/publish/Winsdk.Cli.exe")
+    set(LOCAL_CLI_DEBUG   "${_repo_root}/src/winsdk-CLI/Winsdk.Cli/bin/Debug/net9.0-windows/${WINSDK_RUNTIME_ARCH}/publish/Winsdk.Cli.exe")
 endif()
 
 if(EXISTS "${LOCAL_CLI_RELEASE}")

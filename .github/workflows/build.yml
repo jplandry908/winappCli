@@ -38,8 +38,8 @@ jobs:
       with:
         name: cli-binaries
         path: |
-          src/winsdk-CLI/Winsdk.Cli/bin/Release/net9.0/win-x64/publish/
-          src/winsdk-CLI/Winsdk.Cli/bin/Release/net9.0/win-arm64/publish/
+          src/winsdk-CLI/Winsdk.Cli/bin/Release/net9.0-windows/win-x64/publish/
+          src/winsdk-CLI/Winsdk.Cli/bin/Release/net9.0-windows/win-arm64/publish/
 
     # Build npm package and upload the package and tarball as artifacts
     - name: Build complete npm package (copy binaries only)

@@ -374,7 +374,35 @@ internal class WorkspaceSetupService
                 Console.WriteLine($"{UiSymbols.Check} BuildTools ready → {buildToolsPath}");
             }
 
-            // Step 6.5: Generate AppxManifest.xml (for setup only)
+            // Step 6.5: Enable Developer Mode (for setup only)
+            if (!options.RequireExistingConfig)
+            {
+                try
+                {
+                    if (!options.Quiet)
+                    {
+                        Console.WriteLine($"{UiSymbols.Wrench} Checking Developer Mode...");
+                    }
+
+                    var devModeService = new DevModeService();
+                    var devModeResult = devModeService.EnsureWin11DevMode();
+                    
+                    if (devModeResult != 0 && devModeResult != 3010 && !options.Quiet)
+                    {
+                        Console.WriteLine($"{UiSymbols.Note} Developer Mode setup returned exit code {devModeResult}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (options.Verbose)
+                    {
+                        Console.WriteLine($"{UiSymbols.Note} Developer Mode setup failed: {ex.Message}");
+                    }
+                    // Don't fail the entire setup if developer mode setup fails
+                }
+            }
+
+            // Step 6.6: Generate AppxManifest.xml (for setup only)
             if (!options.RequireExistingConfig)
             {
                 // Check if manifest already exists
