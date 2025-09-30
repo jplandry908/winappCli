@@ -43,15 +43,6 @@ internal class ManifestService
             version = PromptForValue("Version", version);
             description = PromptForValue("Description", description);
             executable = PromptForValue("Executable", executable);
-
-            if (logoPath == null)
-            {
-                logoPath = PromptForValue("Logo path (optional)", "");
-                if (string.IsNullOrWhiteSpace(logoPath))
-                {
-                    logoPath = null;
-                }
-            }
         }
 
         if (verbose)
