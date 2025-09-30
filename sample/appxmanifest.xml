@@ -49,7 +49,7 @@
       <Extensions>
 
         <uap3:Extension Category="windows.appExtension">
-          <uap3:AppExtension Name="com.microsoft.windows.ai.actions" DisplayName="Electron App Action Provider" Id="ElectronExample">
+          <uap3:AppExtension Name="com.microsoft.windows.ai.actions" DisplayName="Electron App Action Provider" Id="ElectronExample" PublicFolder="Assets">
             <uap3:Properties>
               <Registration>registration.json</Registration>
             </uap3:Properties>

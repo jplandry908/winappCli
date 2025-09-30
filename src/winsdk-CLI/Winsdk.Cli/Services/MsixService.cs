@@ -1108,7 +1108,7 @@ $1",
     }
 
     /// <summary>
-    /// Copies all files from the original manifest directory to the debug directory, excluding debug folders
+    /// Copies files referenced in the manifest to the debug directory
     /// </summary>
     private async Task CopyAllAssetsAsync(string originalManifestPath, string debugDir, bool verbose, CancellationToken cancellationToken)
     {
@@ -1116,10 +1116,10 @@ $1",
 
         if (verbose)
         {
-            Console.WriteLine($"📋 Copying all files from: {originalManifestDir}");
+            Console.WriteLine($"📋 Copying manifest-referenced files from: {originalManifestDir}");
         }
 
-        var filesCopied = await CopyDirectoryRecursiveAsync(originalManifestDir, debugDir, verbose);
+        var filesCopied = await CopyManifestReferencedFilesAsync(originalManifestPath, debugDir, verbose);
 
         if (verbose)
         {
@@ -1128,61 +1128,146 @@ $1",
     }
 
     /// <summary>
-    /// Recursively copies files and directories, excluding specified directories and manifest files
+    /// Copies files that are referenced in the manifest using regex pattern matching
     /// </summary>
-    private static async Task<int> CopyDirectoryRecursiveAsync(string sourceDir, string targetDir, bool verbose)
+    private static async Task<int> CopyManifestReferencedFilesAsync(string manifestPath, string targetDir, bool verbose)
     {
         var filesCopied = 0;
+        var manifestDir = Path.GetDirectoryName(manifestPath)!;
 
-        // List of directories to exclude from copying
-        var excludedDirectories = new List<string> { ".winsdk", ".git" };
+        // Read the manifest content
+        var manifestContent = await File.ReadAllTextAsync(manifestPath, Encoding.UTF8);
 
-        // Get all files in current directory
-        var files = Directory.GetFiles(sourceDir);
-
-        foreach (var file in files)
+        if (verbose)
         {
-            var fileName = Path.GetFileName(file);
-
-            // Skip appxmanifest.xml as we've already created the debug version
-            if (fileName.Equals("appxmanifest.xml", StringComparison.OrdinalIgnoreCase))
-            {
-                if (verbose)
-                {
-                    Console.WriteLine($"⏭️  Skipping manifest file: {file}");
-                }
-                continue;
-            }
-
-            var targetFile = Path.Combine(targetDir, fileName);
-
-            // Ensure target directory exists
-            Directory.CreateDirectory(targetDir);
-
-            File.Copy(file, targetFile, overwrite: true);
-            filesCopied++;
+            Console.WriteLine($"📋 Reading manifest: {manifestPath}");
         }
 
-        // Get all subdirectories and copy them recursively
-        var directories = Directory.GetDirectories(sourceDir);
+        var referencedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var directory in directories)
+        // First, extract general file references (not within AppExtensions)
+        var generalFilePatterns = new[]
         {
-            var dirName = Path.GetFileName(directory);
+            // Logo and image files (e.g., Logo="Assets\Logo.png")
+            @"(?:Logo|BackgroundImage|SplashScreen|Square\d+x\d+Logo|Wide\d+x\d+Logo|LockScreenLogo|BadgeLogo|StoreLogo)\s*=\s*[""']([^""']*)[""']",
+            // Logo elements (e.g., <Logo>Assets\StoreLogo.png</Logo>)
+            @"<(?:Logo|BackgroundImage|SplashScreen|Square\d+x\d+Logo|Wide\d+x\d+Logo|LockScreenLogo|BadgeLogo|StoreLogo)>\s*([^<]*)\s*</(?:Logo|BackgroundImage|SplashScreen|Square\d+x\d+Logo|Wide\d+x\d+Logo|LockScreenLogo|BadgeLogo|StoreLogo)>",
+            // General Source attributes
+            @"Source\s*=\s*[""']([^""']*)[""']",
+            // Icon attributes
+            @"Icon\s*=\s*[""']([^""']*)[""']",
+            // Content references (e.g., in File elements)
+            @"<File[^>]*Name\s*=\s*[""']([^""']*)[""'][^>]*>",
+            // Resource files
+            @"ResourceFile\s*=\s*[""']([^""']*)[""']"
+        };
 
-            // Skip directories that are in the exclusion list
-            if (excludedDirectories.Any(excluded => dirName.Equals(excluded, StringComparison.OrdinalIgnoreCase)))
+        // Extract general file references
+        foreach (var pattern in generalFilePatterns)
+        {
+            var matches = Regex.Matches(manifestContent, pattern, RegexOptions.IgnoreCase);
+            foreach (Match match in matches)
             {
+                if (match.Groups.Count > 1)
+                {
+                    var filePath = match.Groups[1].Value.Trim();
+                    if (!string.IsNullOrEmpty(filePath))
+                    {
+                        filePath = filePath.Replace('\\', Path.DirectorySeparatorChar);
+                        referencedFiles.Add(filePath);
+                    }
+                }
+            }
+        }
+
+        // Handle AppExtension elements with potential PublicFolder
+        var appExtensionPattern = @"<(\w+:)?AppExtension[^>]*>(.*?)</(\w+:)?AppExtension>";
+        var appExtensionMatches = Regex.Matches(manifestContent, appExtensionPattern, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        
+        foreach (Match appExtMatch in appExtensionMatches)
+        {
+            var appExtensionElement = appExtMatch.Value; // Full AppExtension element
+            var appExtensionContent = appExtMatch.Groups[2].Value; // Content inside AppExtension
+            
+            // Extract PublicFolder from the AppExtension element attributes
+            var publicFolderMatch = Regex.Match(appExtensionElement, @"PublicFolder\s*=\s*[""']([^""']*)[""']", RegexOptions.IgnoreCase);
+            var publicFolder = publicFolderMatch.Success ? publicFolderMatch.Groups[1].Value.Trim() : string.Empty;
+            
+            // Extract file references within this AppExtension
+            var internalFilePatterns = new[]
+            {
+                @"<Registration>\s*([^<]*)\s*</Registration>",
+                @"<([^>]+)>\s*([^<]*\.(?:json|xml|txt|config|ini|dll|exe|png|jpg|jpeg|gif|svg|ico|bmp))\s*</\1>",
+                @"[""']([^""']*\.(?:json|xml|txt|config|ini|dll|exe|png|jpg|jpeg|gif|svg|ico|bmp))[""']"
+            };
+
+            foreach (var pattern in internalFilePatterns)
+            {
+                var matches = Regex.Matches(appExtensionContent, pattern, RegexOptions.IgnoreCase);
+                foreach (Match match in matches)
+                {
+                    string? filePath = null;
+                    if (pattern.Contains("Registration"))
+                    {
+                        filePath = match.Groups[1].Value.Trim();
+                    }
+                    else if (pattern.Contains(@"</\1>")) // Element pattern
+                    {
+                        filePath = match.Groups[2].Value.Trim();
+                    }
+                    else // Quoted file pattern
+                    {
+                        filePath = match.Groups[1].Value.Trim();
+                    }
+
+                    if (!string.IsNullOrEmpty(filePath))
+                    {
+                        // If PublicFolder is specified, prepend it to the file path
+                        if (!string.IsNullOrEmpty(publicFolder))
+                        {
+                            filePath = Path.Combine(publicFolder, filePath).Replace('\\', Path.DirectorySeparatorChar);
+                            if (verbose)
+                            {
+                                Console.WriteLine($"📁 Found file in PublicFolder '{publicFolder}': {filePath}");
+                            }
+                        }
+                        else
+                        {
+                            filePath = filePath.Replace('\\', Path.DirectorySeparatorChar);
+                        }
+                        referencedFiles.Add(filePath);
+                    }
+                }
+            }
+        }
+
+        // Copy each referenced file
+        foreach (var relativeFilePath in referencedFiles)
+        {
+            var sourceFile = Path.Combine(manifestDir, relativeFilePath);
+            var targetFile = Path.Combine(targetDir, relativeFilePath);
+            
+            if (File.Exists(sourceFile))
+            {
+                // Ensure target directory exists
+                var targetFileDir = Path.GetDirectoryName(targetFile);
+                if (!string.IsNullOrEmpty(targetFileDir))
+                {
+                    Directory.CreateDirectory(targetFileDir);
+                }
+
+                File.Copy(sourceFile, targetFile, overwrite: true);
+                filesCopied++;
+
                 if (verbose)
                 {
-                    Console.WriteLine($"⏭️  Skipping excluded directory: {directory}");
+                    Console.WriteLine($"📄 Copied: {relativeFilePath}");
                 }
-                continue;
             }
-
-            var targetSubDir = Path.Combine(targetDir, dirName);
-            var subDirFilesCopied = await CopyDirectoryRecursiveAsync(directory, targetSubDir, verbose);
-            filesCopied += subDirFilesCopied;
+            else if (verbose)
+            {
+                Console.WriteLine($"⚠️  Referenced file not found: {sourceFile}");
+            }
         }
 
         return filesCopied;
