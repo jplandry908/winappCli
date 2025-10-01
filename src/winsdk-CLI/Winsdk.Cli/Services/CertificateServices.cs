@@ -142,7 +142,7 @@ internal class CertificateServices
             var absoluteCertPath = Path.GetFullPath(certPath);
             var installCommand = $"Import-PfxCertificate -FilePath '{absoluteCertPath}' -CertStoreLocation 'Cert:\\LocalMachine\\TrustedPeople' -Password (ConvertTo-SecureString -String '{password}' -Force -AsPlainText)";
 
-            await _powerShellService.RunCommandAsync(installCommand, elevated: true, environmentVariables: GetCertificateEnvironmentVariables(), verbose: verbose, cancellationToken: cancellationToken);
+            await _powerShellService.RunCommandAsync(installCommand, elevated: true, verbose: verbose, cancellationToken: cancellationToken);
 
             if (verbose)
             {

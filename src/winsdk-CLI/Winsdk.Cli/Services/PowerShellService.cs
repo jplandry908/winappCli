@@ -53,20 +53,24 @@ internal class PowerShellService
             WindowStyle = elevated ? ProcessWindowStyle.Normal : ProcessWindowStyle.Hidden
         };
 
-        // Apply custom environment variables if provided
-        if (environmentVariables is not null)
+        // Apply custom environment variables if provided (only when not elevated)
+        // When elevated, UseShellExecute=true which doesn't support environment variables
+        if (!elevated)
         {
-            foreach (var kvp in environmentVariables)
+            if (environmentVariables is not null)
             {
-                psi.Environment[kvp.Key] = kvp.Value;
+                foreach (var kvp in environmentVariables)
+                {
+                    psi.Environment[kvp.Key] = kvp.Value;
+                }
             }
-        }
 
-        // Always clear PSModulePath to prevent PowerShell Core module conflicts when calling Windows PowerShell
-        // This fixes the issue where calling powershell.exe from PowerShell Core causes module loading errors
-        if (!psi.Environment.ContainsKey("PSModulePath"))
-        {
-            psi.Environment["PSModulePath"] = "";
+            // Always clear PSModulePath to prevent PowerShell Core module conflicts when calling Windows PowerShell
+            // This fixes the issue where calling powershell.exe from PowerShell Core causes module loading errors
+            if (!psi.Environment.ContainsKey("PSModulePath"))
+            {
+                psi.Environment["PSModulePath"] = "";
+            }
         }
 
         if (elevated)

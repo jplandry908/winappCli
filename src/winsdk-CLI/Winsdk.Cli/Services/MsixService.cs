@@ -119,10 +119,7 @@ internal class MsixService
         Directory.CreateDirectory(deploymentDir);
 
         // Copy DLLs, WinMD files, and other runtime assets
-        await CopyRuntimeFilesAsync(extractedDir, deploymentDir, verbose);
-
-        // Generate self-contained manifest template using embedded template
-        await ManifestTemplateService.GenerateSelfContainedManifestTemplateAsync(archSelfContainedDir, verbose, cancellationToken);
+        CopyRuntimeFiles(extractedDir, deploymentDir, verbose);
 
         if (verbose)
         {
@@ -799,13 +796,19 @@ internal class MsixService
         var debugIdentity = CreateDebugIdentity(originalIdentity);
 
         // Step 4: Modify manifest for sparse packaging and debug identity
-        var debugManifestContent = CreateDebugManifestContent(
+        var debugManifestContent = UpdateManifestContent(
             originalManifestContent,
-            originalIdentity,
             debugIdentity,
             executablePath,
             baseDirectory,
+            sparse: true,
+            selfContained: false,
             verbose);
+
+        if (verbose)
+        {
+            Console.WriteLine("✏️  Modified manifest for sparse packaging and debug identity");
+        }
 
         // Step 5: Write debug manifest
         var debugManifestPath = Path.Combine(debugDir, "appxmanifest.xml");
@@ -839,14 +842,15 @@ internal class MsixService
     }
 
     /// <summary>
-    /// Creates the content for the debug manifest with sparse packaging and debug identity
+    /// Updates the manifest identity, application ID, and executable path for sparse packaging
     /// </summary>
-    private string CreateDebugManifestContent(
+    private string UpdateManifestContent(
         string originalManifestContent,
-        MsixIdentityResult originalIdentity,
-        MsixIdentityResult debugIdentity,
+        MsixIdentityResult identity,
         string executablePath,
         string? baseDirectory,
+        bool sparse,
+        bool selfContained,
         bool verbose)
     {
         var modifiedContent = originalManifestContent;
@@ -855,14 +859,14 @@ internal class MsixService
         modifiedContent = Regex.Replace(
             modifiedContent,
             @"(<Identity[^>]*Name\s*=\s*)[""']([^""']*)[""']",
-            $@"$1""{debugIdentity.PackageName}""",
+            $@"$1""{identity.PackageName}""",
             RegexOptions.IgnoreCase);
 
         // Replace application ID
         modifiedContent = Regex.Replace(
             modifiedContent,
             @"(<Application[^>]*Id\s*=\s*)[""']([^""']*)[""']",
-            $@"$1""{debugIdentity.ApplicationId}""",
+            $@"$1""{identity.ApplicationId}""",
             RegexOptions.IgnoreCase);
 
         // Replace executable path with relative path from package root
@@ -889,82 +893,84 @@ internal class MsixService
             $@"$1""{relativeExecutablePath}""",
             RegexOptions.IgnoreCase);
 
-        // Add required namespaces for sparse packaging
-        if (!modifiedContent.Contains("xmlns:uap10"))
+        // Only apply sparse packaging modifications if sparse is true
+        if (sparse)
         {
-            modifiedContent = Regex.Replace(
-                modifiedContent,
-                @"(<Package[^>]*)(>)",
-                @"$1 xmlns:uap10=""http://schemas.microsoft.com/appx/manifest/uap/windows10/10""$2",
-                RegexOptions.IgnoreCase);
-        }
+            // Add required namespaces for sparse packaging
+            if (!modifiedContent.Contains("xmlns:uap10"))
+            {
+                modifiedContent = Regex.Replace(
+                    modifiedContent,
+                    @"(<Package[^>]*)(>)",
+                    @"$1 xmlns:uap10=""http://schemas.microsoft.com/appx/manifest/uap/windows10/10""$2",
+                    RegexOptions.IgnoreCase);
+            }
 
-        if (!modifiedContent.Contains("xmlns:desktop6"))
-        {
-            modifiedContent = Regex.Replace(
-                modifiedContent,
-                @"(<Package[^>]*)(>)",
-                @"$1 xmlns:desktop6=""http://schemas.microsoft.com/appx/manifest/desktop/windows10/6""$2",
-                RegexOptions.IgnoreCase);
-        }
+            if (!modifiedContent.Contains("xmlns:desktop6"))
+            {
+                modifiedContent = Regex.Replace(
+                    modifiedContent,
+                    @"(<Package[^>]*)(>)",
+                    @"$1 xmlns:desktop6=""http://schemas.microsoft.com/appx/manifest/desktop/windows10/6""$2",
+                    RegexOptions.IgnoreCase);
+            }
 
-        // Add sparse package properties
-        if (!modifiedContent.Contains("<uap10:AllowExternalContent>"))
-        {
-            modifiedContent = Regex.Replace(
-                modifiedContent,
-                @"(\s*</Properties>)",
-                @"    <uap10:AllowExternalContent>true</uap10:AllowExternalContent>
+            // Add sparse package properties
+            if (!modifiedContent.Contains("<uap10:AllowExternalContent>"))
+            {
+                modifiedContent = Regex.Replace(
+                    modifiedContent,
+                    @"(\s*</Properties>)",
+                    @"    <uap10:AllowExternalContent>true</uap10:AllowExternalContent>
     <desktop6:RegistryWriteVirtualization>disabled</desktop6:RegistryWriteVirtualization>
 $1",
-                RegexOptions.IgnoreCase);
-        }
+                    RegexOptions.IgnoreCase);
+            }
 
-        // Ensure Application has sparse packaging attributes
-        if (!modifiedContent.Contains("uap10:TrustLevel"))
-        {
+            // Ensure Application has sparse packaging attributes
+            if (!modifiedContent.Contains("uap10:TrustLevel"))
+            {
+                modifiedContent = Regex.Replace(
+                    modifiedContent,
+                    @"(<Application[^>]*)(>)",
+                    @"$1 uap10:TrustLevel=""mediumIL"" uap10:RuntimeBehavior=""packagedClassicApp""$2",
+                    RegexOptions.IgnoreCase);
+            }
+
+            // Remove EntryPoint if present (not needed for sparse packages)
             modifiedContent = Regex.Replace(
                 modifiedContent,
-                @"(<Application[^>]*)(>)",
-                @"$1 uap10:TrustLevel=""mediumIL"" uap10:RuntimeBehavior=""packagedClassicApp""$2",
+                @"\s*EntryPoint\s*=\s*[""'][^""']*[""']",
+                "",
                 RegexOptions.IgnoreCase);
-        }
 
-        // Remove EntryPoint if present (not needed for sparse packages)
-        modifiedContent = Regex.Replace(
-            modifiedContent,
-            @"\s*EntryPoint\s*=\s*[""'][^""']*[""']",
-            "",
-            RegexOptions.IgnoreCase);
+            // Add AppListEntry="none" to VisualElements if not present
+            if (!modifiedContent.Contains("AppListEntry"))
+            {
+                modifiedContent = Regex.Replace(
+                    modifiedContent,
+                    @"(<uap:VisualElements[^>]*)(>)",
+                    @"$1 AppListEntry=""none""$2",
+                    RegexOptions.IgnoreCase);
+            }
 
-        // Add AppListEntry="none" to VisualElements if not present
-        if (!modifiedContent.Contains("AppListEntry"))
-        {
-            modifiedContent = Regex.Replace(
-                modifiedContent,
-                @"(<uap:VisualElements[^>]*)(>)",
-                @"$1 AppListEntry=""none""$2",
-                RegexOptions.IgnoreCase);
-        }
-
-        // Add sparse-specific capabilities if not present
-        if (!modifiedContent.Contains("unvirtualizedResources"))
-        {
-            modifiedContent = Regex.Replace(
-                modifiedContent,
-                @"(\s*<rescap:Capability Name=""runFullTrust"" />)",
-                @"$1
+            // Add sparse-specific capabilities if not present
+            if (!modifiedContent.Contains("unvirtualizedResources"))
+            {
+                modifiedContent = Regex.Replace(
+                    modifiedContent,
+                    @"(\s*<rescap:Capability Name=""runFullTrust"" />)",
+                    @"$1
     <rescap:Capability Name=""unvirtualizedResources""/>
     <rescap:Capability Name=""allowElevation"" />",
-                RegexOptions.IgnoreCase);
+                    RegexOptions.IgnoreCase);
+            }
         }
 
-        // Update or insert Windows App SDK dependency
-        modifiedContent = UpdateWindowsAppSdkDependency(modifiedContent, verbose);
-
-        if (verbose)
+        // Update or insert Windows App SDK dependency (skip for self-contained packages)
+        if (!selfContained)
         {
-            Console.WriteLine("✏️  Modified manifest for sparse packaging and debug identity");
+            modifiedContent = UpdateWindowsAppSdkDependency(modifiedContent, verbose);
         }
 
         return modifiedContent;
@@ -1504,9 +1510,9 @@ $1",
         }
     }
     
-    private Task CopyRuntimeFilesAsync(string extractedDir, string deploymentDir, bool verbose)
+    private void CopyRuntimeFiles(string extractedDir, string deploymentDir, bool verbose)
     {
-        var patterns = new[] { "*.dll", "*.winmd", "*.mui", "*.pri" };
+        var patterns = new[] { "*.dll", "*.winmd", "*.mui", "*.pri", "*.exe", "*.png", "*.json", "*.html" };
 
         foreach (var pattern in patterns)
         {
@@ -1531,7 +1537,6 @@ $1",
                 }
             }
         }
-        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -1541,54 +1546,36 @@ $1",
     {
         var arch = WorkspaceSetupService.GetSystemArchitecture();
 
-        // Create temporary directory for runtime files
-        var tempRuntimeDir = Path.Combine(Path.GetTempPath(), "winsdk-runtime-temp", Guid.NewGuid().ToString());
-        Directory.CreateDirectory(tempRuntimeDir);
+        var workingDir = Directory.GetCurrentDirectory();
+        var winsdkDir = Path.Combine(workingDir, ".winsdk");
 
-        try
+        // Extract runtime files using the existing method
+        await SetupSelfContainedAsync(winsdkDir, arch, verbose, cancellationToken);
+
+        // Copy runtime files from .winsdk/self-contained to input folder
+        var runtimeSourceDir = Path.Combine(winsdkDir, "self-contained", arch, "deployment");
+
+        if (Directory.Exists(runtimeSourceDir))
         {
-            var workingDir = Directory.GetCurrentDirectory();
-            var winsdkDir = Path.Combine(workingDir, ".winsdk");
-
-            // Extract runtime files using the existing method
-            await SetupSelfContainedAsync(winsdkDir, arch, verbose, cancellationToken);
-
-            // Copy runtime files from .winsdk/self-contained to input folder
-            var runtimeSourceDir = Path.Combine(winsdkDir, "self-contained", arch, "deployment");
-            var runtimeDestDir = Path.Combine(inputFolder, "WinAppSDK");
-
-            if (Directory.Exists(runtimeSourceDir))
+            foreach (var file in Directory.GetFiles(runtimeSourceDir))
             {
-                Directory.CreateDirectory(runtimeDestDir);
-
-                foreach (var file in Directory.GetFiles(runtimeSourceDir))
-                {
-                    var destFile = Path.Combine(runtimeDestDir, Path.GetFileName(file));
-                    File.Copy(file, destFile, overwrite: true);
-
-                    if (verbose)
-                    {
-                        Console.WriteLine($"{UiSymbols.Folder} Bundled runtime: {Path.GetFileName(file)}");
-                    }
-                }
+                var destFile = Path.Combine(inputFolder, Path.GetFileName(file));
+                File.Copy(file, destFile, overwrite: true);
 
                 if (verbose)
                 {
-                    Console.WriteLine($"{UiSymbols.Check} Windows App SDK runtime bundled into package");
+                    Console.WriteLine($"{UiSymbols.Folder} Bundled runtime: {Path.GetFileName(file)}");
                 }
             }
-            else
+
+            if (verbose)
             {
-                throw new DirectoryNotFoundException($"Runtime files not found at {runtimeSourceDir}");
+                Console.WriteLine($"{UiSymbols.Check} Windows App SDK runtime bundled into package");
             }
         }
-        finally
+        else
         {
-            // Clean up temp directory
-            if (Directory.Exists(tempRuntimeDir))
-            {
-                Directory.Delete(tempRuntimeDir, recursive: true);
-            }
+            throw new DirectoryNotFoundException($"Runtime files not found at {runtimeSourceDir}");
         }
     }
 }

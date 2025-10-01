@@ -33,7 +33,7 @@
 
   <Applications>
     <Application Id="sample"
-      Executable="sample.exe"
+      Executable="electron-msix-example.exe"
       EntryPoint="Windows.FullTrustApplication"
       uap10:TrustLevel="mediumIL" 
       uap10:RuntimeBehavior="packagedClassicApp">
