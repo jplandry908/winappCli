@@ -240,19 +240,80 @@ internal class MsixService
 
     private async Task EmbedMsixIdentityToExeAsync(string exePath, MsixIdentityResult identityInfo, string? applicationLocation, bool verbose, CancellationToken cancellationToken)
     {
+        // Create the MSIX element for the win32 manifest
+        var msixElement = $@"<msix xmlns=""urn:schemas-microsoft-com:msix.v1""
+            publisher=""{SecurityElement.Escape(identityInfo.Publisher)}""
+            packageName=""{SecurityElement.Escape(identityInfo.PackageName)}""
+            applicationId=""{SecurityElement.Escape(identityInfo.ApplicationId)}""
+        />";
+
+        var cleanupPatterns = new[]
+        {
+            @"<msix[\s\S]*?</msix>",
+            @"<msix[\s\S]*?/>"
+        };
+
+        var fallbackManifestContent = $@"<?xml version=""1.0"" encoding=""UTF-8""?>
+    <assembly xmlns=""urn:schemas-microsoft-com:asm.v1"" manifestVersion=""1.0"">
+      {msixElement}
+      <assemblyIdentity version=""1.0.0.0"" name=""{SecurityElement.Escape(identityInfo.PackageName)}"" type=""win32""/>
+    </assembly>";
+
+        await EmbedXmlContentToExeManifestAsync(
+            exePath, 
+            msixElement, 
+            cleanupPatterns, 
+            fallbackManifestContent, 
+            applicationLocation, 
+            verbose, 
+            null, // no additional namespaces needed
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Embeds arbitrary XML content into the Win32 manifest of an executable.
+    /// </summary>
+    /// <param name="exePath">Path to the executable to modify</param>
+    /// <param name="xmlContent">The XML content to embed in the manifest</param>
+    /// <param name="cleanupPatterns">Regex patterns to remove existing content before adding new content (optional)</param>
+    /// <param name="fallbackManifestContent">Complete manifest content to use if no existing manifest is found (optional)</param>
+    /// <param name="applicationLocation">Working directory for temporary files (optional, defaults to exe directory)</param>
+    /// <param name="verbose">Enable verbose logging</param>
+    /// <param name="requiredNamespaces">Namespace declarations that should be added to the assembly tag if missing (optional)</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    private async Task EmbedXmlContentToExeManifestAsync(
+        string exePath, 
+        string xmlContent, 
+        string[]? cleanupPatterns = null, 
+        string? fallbackManifestContent = null,
+        string? applicationLocation = null, 
+        bool verbose = false, 
+        List<string>? requiredNamespaces = null,
+        CancellationToken cancellationToken = default)
+    {
+        // Validate inputs
+        if (!File.Exists(exePath))
+        {
+            throw new FileNotFoundException($"Executable not found at: {exePath}");
+        }
+
+        if (string.IsNullOrWhiteSpace(xmlContent))
+        {
+            throw new ArgumentException("XML content cannot be null or empty", nameof(xmlContent));
+        }
+
+        if (verbose)
+        {
+            Console.WriteLine($"Processing executable: {exePath}");
+            Console.WriteLine($"Embedding XML content...");
+        }
+
         var workingDir = applicationLocation ?? Path.GetDirectoryName(exePath)!;
         var tempManifestPath = Path.Combine(workingDir, "temp_extracted.manifest");
         var combinedManifestPath = Path.Combine(workingDir, "combined.manifest");
 
         try
         {
-            // Create the MSIX element for the win32 manifest
-            var msixElement = $@"<msix xmlns=""urn:schemas-microsoft-com:msix.v1""
-            publisher=""{SecurityElement.Escape(identityInfo.Publisher)}""
-            packageName=""{SecurityElement.Escape(identityInfo.PackageName)}""
-            applicationId=""{SecurityElement.Escape(identityInfo.ApplicationId)}""
-        />";
-
             if (verbose)
             {
                 Console.WriteLine("Extracting current manifest from executable...");
@@ -279,41 +340,33 @@ internal class MsixService
             {
                 if (verbose)
                 {
-                    Console.WriteLine("Combining with existing manifest...");
+                    Console.WriteLine($"Combining with existing manifest...");
                 }
 
                 // Read existing manifest
                 var existingManifest = await File.ReadAllTextAsync(tempManifestPath, Encoding.UTF8, cancellationToken);
 
-                // Find the closing </assembly> tag in existing manifest
-                var existingManifestParts = existingManifest.Split("</assembly>");
-
-                if (existingManifestParts.Length >= 2)
-                {
-                    // Remove any existing msix section
-                    var cleanedExistingContent = existingManifestParts[0];
-                    cleanedExistingContent = Regex.Replace(cleanedExistingContent, @"<msix[\s\S]*?</msix>", "", RegexOptions.IgnoreCase);
-                    cleanedExistingContent = Regex.Replace(cleanedExistingContent, @"<msix[\s\S]*?/>", "", RegexOptions.IgnoreCase);
-
-                    // Combine: existing content + msix element + closing tag + rest
-                    finalManifest = cleanedExistingContent + "\n  " + msixElement + "\n</assembly>" + string.Join("</assembly>", existingManifestParts.Skip(1));
-                }
-                else
-                {
-                    throw new InvalidOperationException("Invalid existing manifest structure");
-                }
+                // Merge namespaces and content
+                finalManifest = MergeManifestContent(existingManifest, xmlContent, cleanupPatterns, requiredNamespaces, verbose);
 
                 // Clean up temporary file
                 TryDeleteFile(tempManifestPath);
             }
             else
             {
-                // Create a new basic manifest with MSIX identity
-                finalManifest = $@"<?xml version=""1.0"" encoding=""UTF-8""?>
+                // Use fallback manifest if provided, otherwise create a minimal one
+                if (!string.IsNullOrEmpty(fallbackManifestContent))
+                {
+                    finalManifest = fallbackManifestContent;
+                }
+                else
+                {
+                    // Create a minimal manifest with the provided XML content
+                    finalManifest = $@"<?xml version=""1.0"" encoding=""UTF-8""?>
     <assembly xmlns=""urn:schemas-microsoft-com:asm.v1"" manifestVersion=""1.0"">
-      {msixElement}
-      <assemblyIdentity version=""1.0.0.0"" name=""{SecurityElement.Escape(identityInfo.PackageName)}"" type=""win32""/>
+      {xmlContent}
     </assembly>";
+                }
             }
 
             // Write the combined manifest
@@ -332,7 +385,7 @@ internal class MsixService
 
             if (verbose)
             {
-                Console.WriteLine("MSIX identity successfully embedded into executable");
+                Console.WriteLine($"XML content successfully embedded into executable");
             }
 
             // Clean up combined manifest file
@@ -344,7 +397,7 @@ internal class MsixService
             TryDeleteFile(tempManifestPath);
             TryDeleteFile(combinedManifestPath);
 
-            throw new InvalidOperationException($"Failed to add MSIX identity to executable: {ex.Message}", ex);
+            throw new InvalidOperationException($"Failed to add XML content to executable: {ex.Message}", ex);
         }
     }
 
@@ -540,7 +593,9 @@ internal class MsixService
         }
 
         if (!File.Exists(resolvedManifestPath))
+        {
             throw new FileNotFoundException($"Manifest file not found: {resolvedManifestPath}");
+        }
 
         // Ensure output folder exists
         if (!Directory.Exists(outputFolder))
@@ -552,12 +607,16 @@ internal class MsixService
         var finalPackageName = packageName;
         var extractedPublisher = publisher;
 
+        var manifestContent = await File.ReadAllTextAsync(resolvedManifestPath, Encoding.UTF8, cancellationToken);
+
+        // Update manifest content to ensure it's either referencing Windows App SDK or is self-contained
+        manifestContent = UpdateAppxManifestContent(manifestContent, null, null, null, sparse: false, selfContained: selfContained, verbose);
+        await File.WriteAllTextAsync(resolvedManifestPath, manifestContent, Encoding.UTF8, cancellationToken);
+
         if (string.IsNullOrWhiteSpace(finalPackageName) || string.IsNullOrWhiteSpace(extractedPublisher))
         {
             try
             {
-                var manifestContent = await File.ReadAllTextAsync(resolvedManifestPath, Encoding.UTF8, cancellationToken);
-
                 if (string.IsNullOrWhiteSpace(finalPackageName))
                 {
                     var nameMatch = Regex.Match(manifestContent, @"<Identity[^>]*Name\s*=\s*[""']([^""']*)[""']", RegexOptions.IgnoreCase);
@@ -569,15 +628,19 @@ internal class MsixService
                     var publisherMatch = Regex.Match(manifestContent, @"<Identity[^>]*Publisher\s*=\s*[""']([^""']*)[""']", RegexOptions.IgnoreCase);
                     extractedPublisher = publisherMatch.Success ? publisherMatch.Groups[1].Value : null;
                 }
-
-                // Update manifest content to ensure it's either referencing Windows App SDK or is self-contained
-                manifestContent = UpdateManifestContent(manifestContent, null, null, null, sparse: false, selfContained: selfContained, verbose);
-                await File.WriteAllTextAsync(resolvedManifestPath, manifestContent, Encoding.UTF8, cancellationToken);
             }
             catch
             {
                 finalPackageName ??= "Package";
             }
+        }
+
+        var executableMatch = Regex.Match(manifestContent, @"<Application[^>]*Executable\s*=\s*[""']([^""']*)[""']", RegexOptions.IgnoreCase);
+        string executablePath = executableMatch.Success ? executableMatch.Groups[1].Value : string.Empty;
+        
+        if (!string.IsNullOrWhiteSpace(executablePath) && !Path.IsPathRooted(executablePath))
+        {
+            executablePath = Path.GetFullPath(Path.Combine(inputFolder, executablePath));
         }
 
         // Clean the resolved package name to ensure it meets MSIX schema requirements
@@ -591,9 +654,9 @@ internal class MsixService
             Console.WriteLine($"Output: {outputMsixPath}");
         }
 
+        List<string> tempFiles = [];
         try
         {
-            List<string> tempFiles = [];
             // Generate PRI files if not skipped
             if (!skipPri)
             {
@@ -625,17 +688,25 @@ internal class MsixService
                 }
 
                 await PrepareRuntimeForPackagingAsync(inputFolder, verbose, cancellationToken);
+
+                // Add WindowsAppSDK.manifest to existing manifest
+                await EmbedWindowsAppSDKManifestToExeAsync(executablePath, inputFolder, verbose, cancellationToken);
             }
 
             await CreateMsixPackageFromFolderAsync(inputFolder, verbose, outputMsixPath, cancellationToken);
 
-            var certPath = certificatePath;
             // Handle certificate generation and signing
             if (autoSign)
             {
-                await SignMsixPackageAsync(outputFolder, certificatePassword, generateDevCert, installDevCert, verbose, finalPackageName, extractedPublisher, outputMsixPath, certPath, cancellationToken);
+                await SignMsixPackageAsync(outputFolder, certificatePassword, generateDevCert, installDevCert, verbose, finalPackageName, extractedPublisher, outputMsixPath, certificatePath, cancellationToken);
             }
-
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Failed to create MSIX package: {ex.Message}", ex);
+        }
+        finally
+        {
             // Clean up temporary PRI files
             if (!skipPri)
             {
@@ -657,22 +728,204 @@ internal class MsixService
                     }
                 }
             }
+        }
 
-            if (verbose)
+        if (verbose)
+        {
+            Console.WriteLine($"MSIX package created successfully: {outputMsixPath}");
+            if (autoSign)
             {
-                Console.WriteLine($"MSIX package created successfully: {outputMsixPath}");
-                if (autoSign)
-                {
-                    Console.WriteLine("Package has been signed");
-                }
+                Console.WriteLine("Package has been signed");
+            }
+        }
+
+        return new CreateMsixPackageResult(outputMsixPath, autoSign);
+    }
+
+    private async Task EmbedWindowsAppSDKManifestToExeAsync(string exePath, string? applicationLocation, bool verbose, CancellationToken cancellationToken)
+    {
+        // Load the Windows App SDK manifest content
+        string windowsAppSDKManifestContent = await ManifestTemplateService.LoadTemplateAsync("WindowsAppSDK.manifest", cancellationToken);
+
+        // Extract the content inside the <assembly> tags and the namespaces
+        var (assemblyContent, namespaces) = ExtractAssemblyContentAndNamespaces(windowsAppSDKManifestContent);
+
+        // Create fallback manifest content if no existing manifest is found
+        var assemblyIdentity = $@"<assemblyIdentity version=""1.0.0.0"" name=""{Path.GetFileNameWithoutExtension(exePath)}"" type=""win32""/>";
+        var fallbackManifestContent = $@"<?xml version=""1.0"" encoding=""UTF-8"" standalone=""yes""?>
+<assembly manifestVersion=""1.0""{string.Join("", namespaces.Select(ns => $@"
+    {ns}"))}>
+  {assemblyIdentity}
+{assemblyContent}
+</assembly>";
+
+        await EmbedXmlContentToExeManifestAsync(
+            exePath,
+            assemblyContent,
+            null,
+            fallbackManifestContent,
+            applicationLocation,
+            verbose,
+            namespaces,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Extracts the content inside assembly tags and the namespace declarations from a complete manifest
+    /// </summary>
+    /// <param name="manifestContent">Complete manifest content</param>
+    /// <returns>Tuple of (assembly content, namespace declarations)</returns>
+    private static (string assemblyContent, List<string> namespaces) ExtractAssemblyContentAndNamespaces(string manifestContent)
+    {
+        // Extract assembly content (everything between <assembly> and </assembly> tags, excluding the tags themselves)
+        var assemblyMatch = Regex.Match(manifestContent, @"<assembly[^>]*>(.*)</assembly>", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        if (!assemblyMatch.Success)
+        {
+            throw new InvalidOperationException("No <assembly> tag found in manifest content");
+        }
+
+        var assemblyContent = assemblyMatch.Groups[1].Value.Trim();
+
+        // Extract namespace declarations from the assembly tag
+        var namespaces = new List<string>();
+        var assemblyTag = manifestContent.Substring(assemblyMatch.Index, assemblyMatch.Groups[1].Index - assemblyMatch.Index);
+        
+        // Find all xmlns declarations
+        var namespaceMatches = Regex.Matches(assemblyTag, @"xmlns(?::([^=]+))?\s*=\s*[""']([^""']*)[""']", RegexOptions.IgnoreCase);
+        foreach (Match match in namespaceMatches)
+        {
+            var prefix = match.Groups[1].Value;
+            var uri = match.Groups[2].Value;
+            
+            if (string.IsNullOrEmpty(prefix))
+            {
+                namespaces.Add($@"xmlns=""{uri}""");
+            }
+            else
+            {
+                namespaces.Add($@"xmlns:{prefix}=""{uri}""");
+            }
+        }
+
+        // Also extract manifestVersion if present
+        var manifestVersionMatch = Regex.Match(assemblyTag, @"manifestVersion\s*=\s*[""']([^""']*)[""']", RegexOptions.IgnoreCase);
+        if (manifestVersionMatch.Success)
+        {
+            namespaces.Insert(0, $@"manifestVersion=""{manifestVersionMatch.Groups[1].Value}""");
+        }
+
+        return (assemblyContent, namespaces);
+    }
+
+    /// <summary>
+    /// Merges new XML content into an existing manifest, handling namespace declarations properly
+    /// </summary>
+    /// <param name="existingManifest">The existing manifest content</param>
+    /// <param name="newXmlContent">The new XML content to add</param>
+    /// <param name="cleanupPatterns">Regex patterns to remove existing content</param>
+    /// <param name="requiredNamespaces">Namespace declarations that should be added if missing</param>
+    /// <param name="verbose">Enable verbose logging</param>
+    /// <returns>The merged manifest content</returns>
+    private static string MergeManifestContent(
+        string existingManifest, 
+        string newXmlContent, 
+        string[]? cleanupPatterns, 
+        List<string>? requiredNamespaces,
+        bool verbose)
+    {
+        // Find the assembly tag and extract its attributes
+        var assemblyTagMatch = Regex.Match(existingManifest, @"<assembly[^>]*>", RegexOptions.IgnoreCase);
+        if (!assemblyTagMatch.Success)
+        {
+            throw new InvalidOperationException("No <assembly> tag found in existing manifest");
+        }
+
+        var assemblyTag = assemblyTagMatch.Value;
+        var beforeAssembly = existingManifest.Substring(0, assemblyTagMatch.Index);
+        var afterAssemblyTag = existingManifest.Substring(assemblyTagMatch.Index + assemblyTag.Length);
+
+        // Extract content between <assembly> and </assembly>
+        var assemblyEndMatch = Regex.Match(afterAssemblyTag, @"</assembly>", RegexOptions.IgnoreCase);
+        if (!assemblyEndMatch.Success)
+        {
+            throw new InvalidOperationException("No closing </assembly> tag found in existing manifest");
+        }
+
+        var existingAssemblyContent = afterAssemblyTag.Substring(0, assemblyEndMatch.Index);
+        var afterAssembly = afterAssemblyTag.Substring(assemblyEndMatch.Index);
+
+        // Clean up existing content if patterns are provided
+        if (cleanupPatterns != null)
+        {
+            foreach (var pattern in cleanupPatterns)
+            {
+                existingAssemblyContent = Regex.Replace(existingAssemblyContent, pattern, "", RegexOptions.IgnoreCase);
+            }
+        }
+
+        // Merge namespaces if required
+        var mergedAssemblyTag = assemblyTag;
+        if (requiredNamespaces != null && requiredNamespaces.Count > 0)
+        {
+            mergedAssemblyTag = MergeNamespaces(assemblyTag, requiredNamespaces, verbose);
+        }
+
+        // Combine everything together
+        var mergedContent = beforeAssembly + mergedAssemblyTag + existingAssemblyContent + "\n  " + newXmlContent + "\n" + afterAssembly;
+
+        return mergedContent;
+    }
+
+    /// <summary>
+    /// Merges required namespaces into an assembly tag if they don't already exist
+    /// </summary>
+    /// <param name="assemblyTag">The existing assembly tag</param>
+    /// <param name="requiredNamespaces">List of namespace declarations to add if missing</param>
+    /// <param name="verbose">Enable verbose logging</param>
+    /// <returns>The assembly tag with merged namespaces</returns>
+    private static string MergeNamespaces(string assemblyTag, List<string> requiredNamespaces, bool verbose)
+    {
+        var result = assemblyTag;
+
+        foreach (var namespaceDecl in requiredNamespaces)
+        {
+            // Skip manifestVersion as it should already exist
+            if (namespaceDecl.StartsWith("manifestVersion=", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // Extract namespace prefix and URI from the declaration
+            var nsMatch = Regex.Match(namespaceDecl, @"xmlns(?::([^=]+))?\s*=\s*[""']([^""']*)[""']", RegexOptions.IgnoreCase);
+            if (!nsMatch.Success)
+                continue;
+
+            var prefix = nsMatch.Groups[1].Value;
+            var uri = nsMatch.Groups[2].Value;
+
+            // Check if this namespace is already declared
+            string existingPattern;
+            if (string.IsNullOrEmpty(prefix))
+            {
+                existingPattern = @$"xmlns\s*=\s*[""']{Regex.Escape(uri)}[""']";
+            }
+            else
+            {
+                existingPattern = @$"xmlns\s*:\s*{Regex.Escape(prefix)}\s*=\s*[""']{Regex.Escape(uri)}[""']";
             }
 
-            return new CreateMsixPackageResult(outputMsixPath, autoSign);
+            if (!Regex.IsMatch(result, existingPattern, RegexOptions.IgnoreCase))
+            {
+                // Add the namespace declaration before the closing >
+                result = Regex.Replace(result, @"(\s*>)$", $@"
+    {namespaceDecl}$1", RegexOptions.IgnoreCase);
+
+                if (verbose)
+                {
+                    Console.WriteLine($"Added namespace: {namespaceDecl}");
+                }
+            }
         }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException($"Failed to create MSIX package: {ex.Message}", ex);
-        }
+
+        return result;
     }
 
     private async Task SignMsixPackageAsync(string outputFolder, string certificatePassword, bool generateDevCert, bool installDevCert, bool verbose, string finalPackageName, string? extractedPublisher, string outputMsixPath, string? certPath, CancellationToken cancellationToken)
@@ -811,7 +1064,7 @@ internal class MsixService
         var debugIdentity = CreateDebugIdentity(originalIdentity);
 
         // Step 4: Modify manifest for sparse packaging and debug identity
-        var debugManifestContent = UpdateManifestContent(
+        var debugManifestContent = UpdateAppxManifestContent(
             originalManifestContent,
             debugIdentity,
             executablePath,
@@ -859,8 +1112,8 @@ internal class MsixService
     /// <summary>
     /// Updates the manifest identity, application ID, and executable path for sparse packaging
     /// </summary>
-    private string UpdateManifestContent(
-        string originalManifestContent,
+    private string UpdateAppxManifestContent(
+        string originalAppxManifestContent,
         MsixIdentityResult? identity,
         string? executablePath,
         string? baseDirectory,
@@ -868,7 +1121,7 @@ internal class MsixService
         bool selfContained,
         bool verbose)
     {
-        var modifiedContent = originalManifestContent;
+        var modifiedContent = originalAppxManifestContent;
 
         if (identity != null)
         {

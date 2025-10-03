@@ -84,16 +84,21 @@ internal class ManifestTemplateService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Template content as string</returns>
     /// <exception cref="FileNotFoundException">Thrown when template is not found</exception>
-    public static async Task<string> LoadManifestTemplateAsync(string templateSuffix, CancellationToken cancellationToken = default)
+    public static Task<string> LoadManifestTemplateAsync(string templateSuffix, CancellationToken cancellationToken = default)
     {
-        var templateResName = FindResourceEnding($".Templates.appxmanifest.{templateSuffix}.xml")
-                              ?? throw new FileNotFoundException($"Embedded template not found for suffix: {templateSuffix}");
+        return LoadTemplateAsync($"appxmanifest.{templateSuffix}.xml", cancellationToken);
+    }
+    
+    public static async Task<string> LoadTemplateAsync(string template, CancellationToken cancellationToken = default)
+    {
+        var templateResName = FindResourceEnding($".Templates.{template}")
+                              ?? throw new FileNotFoundException($"Embedded template not found: {template}");
 
         var asm = Assembly.GetExecutingAssembly();
-        await using var stream = asm.GetManifestResourceStream(templateResName) 
+        await using var stream = asm.GetManifestResourceStream(templateResName)
             ?? throw new FileNotFoundException($"Template resource not found: {templateResName}");
         using var reader = new StreamReader(stream, Encoding.UTF8);
-        
+
         return await reader.ReadToEndAsync(cancellationToken);
     }
     
