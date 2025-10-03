@@ -84,19 +84,24 @@ internal class ManifestTemplateService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Template content as string</returns>
     /// <exception cref="FileNotFoundException">Thrown when template is not found</exception>
-    public static async Task<string> LoadManifestTemplateAsync(string templateSuffix, CancellationToken cancellationToken = default)
+    public static Task<string> LoadManifestTemplateAsync(string templateSuffix, CancellationToken cancellationToken = default)
     {
-        var templateResName = FindResourceEnding($".Templates.appxmanifest.{templateSuffix}.xml")
-                              ?? throw new FileNotFoundException($"Embedded template not found for suffix: {templateSuffix}");
+        return LoadTemplateAsync($"appxmanifest.{templateSuffix}.xml", cancellationToken);
+    }
+    
+    public static async Task<string> LoadTemplateAsync(string template, CancellationToken cancellationToken = default)
+    {
+        var templateResName = FindResourceEnding($".Templates.{template}")
+                              ?? throw new FileNotFoundException($"Embedded template not found: {template}");
 
         var asm = Assembly.GetExecutingAssembly();
-        await using var stream = asm.GetManifestResourceStream(templateResName) 
+        await using var stream = asm.GetManifestResourceStream(templateResName)
             ?? throw new FileNotFoundException($"Template resource not found: {templateResName}");
         using var reader = new StreamReader(stream, Encoding.UTF8);
-        
+
         return await reader.ReadToEndAsync(cancellationToken);
     }
-
+    
     /// <summary>
     /// Applies common template replacements to manifest content
     /// </summary>
@@ -164,17 +169,6 @@ internal class ManifestTemplateService
     }
 
     /// <summary>
-    /// Writes manifest content to file with proper UTF-8 encoding (no BOM)
-    /// </summary>
-    /// <param name="manifestPath">Path to write manifest to</param>
-    /// <param name="content">Manifest content</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    public static async Task WriteManifestAsync(string manifestPath, string content, CancellationToken cancellationToken = default)
-    {
-        await File.WriteAllTextAsync(manifestPath, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), cancellationToken);
-    }
-
-    /// <summary>
     /// Generates a complete manifest with defaults, template processing, and asset generation
     /// </summary>
     /// <param name="outputDirectory">Directory to generate manifest and assets in</param>
@@ -228,7 +222,7 @@ internal class ManifestTemplateService
 
         // Write manifest file
         var manifestPath = Path.Combine(outputDirectory, "appxmanifest.xml");
-        await WriteManifestAsync(manifestPath, content, cancellationToken);
+        await File.WriteAllTextAsync(manifestPath, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), cancellationToken);
 
         // Generate default assets
         await GenerateDefaultAssetsAsync(outputDirectory, verbose, cancellationToken);

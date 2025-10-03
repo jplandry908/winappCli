@@ -152,8 +152,8 @@ Napi::String CallPhiSilica(const Napi::CallbackInfo& info) {
         // sample intentionally blocks until the model is available.
         try
         {
-            auto const limitedAccessFeatureToken = /* contact CSS for these values */;
-            auto const limitedAccessFeatureAttestation = /* contact CSS for these values */;
+            auto const limitedAccessFeatureToken = L"";/* contact CSS for these values */;
+            auto const limitedAccessFeatureAttestation = L"";/* contact CSS for these values */;
 
             auto access = LimitedAccessFeatures::TryUnlockFeature(
                 L"com.microsoft.windows.ai.languagemodel",

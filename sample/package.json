@@ -7,7 +7,7 @@
     "start": "electron .",
     "build": "electron-builder --dir",
     "package-msi": "electron-builder",
-    "create-msix": "npx build & winsdk package ./dist/win-unpacked/ --output-folder ./dist",
+    "create-msix": "npm run build & winsdk package ./dist/win-unpacked/ --output-folder ./dist --cert ./devcert.pfx",
     "build-addon": "winsdk restore & node-gyp clean configure build --directory=native",
     "setup-debug": "npx winsdk node add-electron-debug-identity"
   },
@@ -39,7 +39,7 @@
   "author": "Metulev",
   "license": "ISC",
   "devDependencies": {
-    "electron": "^38.1.2",
+    "electron": "^38.2.0",
     "electron-builder": "^26.0.12",
     "nan": "^2.23.0",
     "node-addon-api": "^8.5.0",

@@ -142,7 +142,7 @@ internal class CertificateServices
             var absoluteCertPath = Path.GetFullPath(certPath);
             var installCommand = $"Import-PfxCertificate -FilePath '{absoluteCertPath}' -CertStoreLocation 'Cert:\\LocalMachine\\TrustedPeople' -Password (ConvertTo-SecureString -String '{password}' -Force -AsPlainText)";
 
-            await _powerShellService.RunCommandAsync(installCommand, elevated: true, environmentVariables: GetCertificateEnvironmentVariables(), verbose: verbose, cancellationToken: cancellationToken);
+            await _powerShellService.RunCommandAsync(installCommand, elevated: true, verbose: verbose, cancellationToken: cancellationToken);
 
             if (verbose)
             {
@@ -365,7 +365,7 @@ internal class CertificateServices
                     Console.WriteLine($"Extracting publisher from manifest: {manifestPath}");
                 }
                 
-                var identityInfo = await msixService.ParseAppxManifestAsync(manifestPath, cancellationToken);
+                var identityInfo = await msixService.ParseAppxManifestFromPathAsync(manifestPath, cancellationToken);
                 return identityInfo.Publisher;
             }
             catch (Exception ex)
@@ -388,7 +388,7 @@ internal class CertificateServices
                     Console.WriteLine($"Found project manifest: {projectManifestPath}");
                 }
                 
-                var identityInfo = await msixService.ParseAppxManifestAsync(projectManifestPath, cancellationToken);
+                var identityInfo = await msixService.ParseAppxManifestFromPathAsync(projectManifestPath, cancellationToken);
                 return identityInfo.Publisher;
             }
             catch (Exception ex)
