@@ -247,48 +247,42 @@ internal class MsixService
             applicationId=""{SecurityElement.Escape(identityInfo.ApplicationId)}""
         />";
 
-        var cleanupPatterns = new[]
+        var manifestContent = $@"<?xml version=""1.0"" encoding=""UTF-8""?>
+<assembly xmlns=""urn:schemas-microsoft-com:asm.v1"" manifestVersion=""1.0"">
+  {msixElement}
+  <assemblyIdentity version=""1.0.0.0"" name=""{SecurityElement.Escape(identityInfo.PackageName)}"" type=""win32""/>
+</assembly>";
+
+        // Create a temporary manifest file
+        var workingDir = applicationLocation ?? Path.GetDirectoryName(exePath)!;
+        var tempManifestPath = Path.Combine(workingDir, "msix_identity_temp.manifest");
+        
+        try
         {
-            @"<msix[\s\S]*?</msix>",
-            @"<msix[\s\S]*?/>"
-        };
-
-        var fallbackManifestContent = $@"<?xml version=""1.0"" encoding=""UTF-8""?>
-    <assembly xmlns=""urn:schemas-microsoft-com:asm.v1"" manifestVersion=""1.0"">
-      {msixElement}
-      <assemblyIdentity version=""1.0.0.0"" name=""{SecurityElement.Escape(identityInfo.PackageName)}"" type=""win32""/>
-    </assembly>";
-
-        await EmbedXmlContentToExeManifestAsync(
-            exePath, 
-            msixElement, 
-            cleanupPatterns, 
-            fallbackManifestContent, 
-            applicationLocation, 
-            verbose, 
-            null, // no additional namespaces needed
-            cancellationToken);
+            await File.WriteAllTextAsync(tempManifestPath, manifestContent, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), cancellationToken);
+            
+            // Use mt.exe to merge manifests
+            await EmbedManifestFileToExeAsync(exePath, tempManifestPath, applicationLocation, verbose, cancellationToken);
+        }
+        finally
+        {
+            TryDeleteFile(tempManifestPath);
+        }
     }
 
     /// <summary>
-    /// Embeds arbitrary XML content into the Win32 manifest of an executable.
+    /// Embeds a manifest file into the Win32 manifest of an executable using mt.exe for proper merging.
     /// </summary>
     /// <param name="exePath">Path to the executable to modify</param>
-    /// <param name="xmlContent">The XML content to embed in the manifest</param>
-    /// <param name="cleanupPatterns">Regex patterns to remove existing content before adding new content (optional)</param>
-    /// <param name="fallbackManifestContent">Complete manifest content to use if no existing manifest is found (optional)</param>
+    /// <param name="manifestPath">Path to the manifest file to embed</param>
     /// <param name="applicationLocation">Working directory for temporary files (optional, defaults to exe directory)</param>
     /// <param name="verbose">Enable verbose logging</param>
-    /// <param name="requiredNamespaces">Namespace declarations that should be added to the assembly tag if missing (optional)</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    private async Task EmbedXmlContentToExeManifestAsync(
+    private async Task EmbedManifestFileToExeAsync(
         string exePath, 
-        string xmlContent, 
-        string[]? cleanupPatterns = null, 
-        string? fallbackManifestContent = null,
+        string manifestPath,
         string? applicationLocation = null, 
-        bool verbose = false, 
-        List<string>? requiredNamespaces = null,
+        bool verbose = false,
         CancellationToken cancellationToken = default)
     {
         // Validate inputs
@@ -297,20 +291,20 @@ internal class MsixService
             throw new FileNotFoundException($"Executable not found at: {exePath}");
         }
 
-        if (string.IsNullOrWhiteSpace(xmlContent))
+        if (!File.Exists(manifestPath))
         {
-            throw new ArgumentException("XML content cannot be null or empty", nameof(xmlContent));
+            throw new FileNotFoundException($"Manifest file not found at: {manifestPath}");
         }
 
         if (verbose)
         {
             Console.WriteLine($"Processing executable: {exePath}");
-            Console.WriteLine($"Embedding XML content...");
+            Console.WriteLine($"Embedding manifest: {manifestPath}");
         }
 
         var workingDir = applicationLocation ?? Path.GetDirectoryName(exePath)!;
         var tempManifestPath = Path.Combine(workingDir, "temp_extracted.manifest");
-        var combinedManifestPath = Path.Combine(workingDir, "combined.manifest");
+        var mergedManifestPath = Path.Combine(workingDir, "merged.manifest");
 
         try
         {
@@ -330,74 +324,53 @@ internal class MsixService
             {
                 if (verbose)
                 {
-                    Console.WriteLine("No existing manifest found in executable, creating new one");
+                    Console.WriteLine("No existing manifest found in executable");
                 }
             }
-
-            string finalManifest;
 
             if (hasExistingManifest)
             {
                 if (verbose)
                 {
-                    Console.WriteLine($"Combining with existing manifest...");
+                    Console.WriteLine("Merging with existing manifest using mt.exe...");
                 }
 
-                // Read existing manifest
-                var existingManifest = await File.ReadAllTextAsync(tempManifestPath, Encoding.UTF8, cancellationToken);
-
-                // Merge namespaces and content
-                finalManifest = MergeManifestContent(existingManifest, xmlContent, cleanupPatterns, requiredNamespaces, verbose);
-
-                // Clean up temporary file
-                TryDeleteFile(tempManifestPath);
+                // Use mt.exe to merge existing manifest with new manifest
+                await RunMtToolAsync($@"-manifest ""{tempManifestPath}"" ""{manifestPath}"" -out:""{mergedManifestPath}""", verbose, cancellationToken);
             }
             else
             {
-                // Use fallback manifest if provided, otherwise create a minimal one
-                if (!string.IsNullOrEmpty(fallbackManifestContent))
+                if (verbose)
                 {
-                    finalManifest = fallbackManifestContent;
+                    Console.WriteLine("No existing manifest, using new manifest as-is");
                 }
-                else
-                {
-                    // Create a minimal manifest with the provided XML content
-                    finalManifest = $@"<?xml version=""1.0"" encoding=""UTF-8""?>
-    <assembly xmlns=""urn:schemas-microsoft-com:asm.v1"" manifestVersion=""1.0"">
-      {xmlContent}
-    </assembly>";
-                }
+
+                // No existing manifest, use the new manifest directly
+                File.Copy(manifestPath, mergedManifestPath);
             }
-
-            // Write the combined manifest
-            await File.WriteAllTextAsync(combinedManifestPath, finalManifest, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), cancellationToken);
-
-            var command = $@"-manifest ""{combinedManifestPath}"" -outputresource:""{exePath}"";#1";
-            if (verbose)
-            {
-                Console.WriteLine($"Final manifest content: {finalManifest}");
-                Console.WriteLine("Re-embedding manifest into executable...");
-                Console.WriteLine($"Command: mt.exe {command}");
-            }
-
-            // Re-embed the combined manifest into the executable
-            await RunMtToolAsync(command, verbose, cancellationToken);
 
             if (verbose)
             {
-                Console.WriteLine($"XML content successfully embedded into executable");
+                Console.WriteLine("Embedding merged manifest into executable...");
             }
 
-            // Clean up combined manifest file
-            TryDeleteFile(combinedManifestPath);
+            // Update the executable with merged manifest
+            await RunMtToolAsync($@"-manifest ""{mergedManifestPath}"" -outputresource:""{exePath}"";#1", verbose, cancellationToken);
+
+            if (verbose)
+            {
+                Console.WriteLine($"✅ Successfully embedded manifest into: {exePath}");
+            }
         }
         catch (Exception ex)
         {
-            // Clean up any temporary files
+            throw new InvalidOperationException($"Failed to embed manifest into executable: {ex.Message}", ex);
+        }
+        finally
+        {
+            // Clean up temporary files
             TryDeleteFile(tempManifestPath);
-            TryDeleteFile(combinedManifestPath);
-
-            throw new InvalidOperationException($"Failed to add XML content to executable: {ex.Message}", ex);
+            TryDeleteFile(mergedManifestPath);
         }
     }
 
@@ -744,189 +717,27 @@ internal class MsixService
 
     private async Task EmbedWindowsAppSDKManifestToExeAsync(string exePath, string? applicationLocation, bool verbose, CancellationToken cancellationToken)
     {
-        // Load the Windows App SDK manifest content
+        // Load the complete Windows App SDK manifest template
         string windowsAppSDKManifestContent = await ManifestTemplateService.LoadTemplateAsync("WindowsAppSDK.manifest", cancellationToken);
-
-        // Extract the content inside the <assembly> tags and the namespaces
-        var (assemblyContent, namespaces) = ExtractAssemblyContentAndNamespaces(windowsAppSDKManifestContent);
-
-        // Create fallback manifest content if no existing manifest is found
-        var assemblyIdentity = $@"<assemblyIdentity version=""1.0.0.0"" name=""{Path.GetFileNameWithoutExtension(exePath)}"" type=""win32""/>";
-        var fallbackManifestContent = $@"<?xml version=""1.0"" encoding=""UTF-8"" standalone=""yes""?>
-<assembly manifestVersion=""1.0""{string.Join("", namespaces.Select(ns => $@"
-    {ns}"))}>
-  {assemblyIdentity}
-{assemblyContent}
-</assembly>";
-
-        await EmbedXmlContentToExeManifestAsync(
-            exePath,
-            assemblyContent,
-            null,
-            fallbackManifestContent,
-            applicationLocation,
-            verbose,
-            namespaces,
-            cancellationToken);
-    }
-
-    /// <summary>
-    /// Extracts the content inside assembly tags and the namespace declarations from a complete manifest
-    /// </summary>
-    /// <param name="manifestContent">Complete manifest content</param>
-    /// <returns>Tuple of (assembly content, namespace declarations)</returns>
-    private static (string assemblyContent, List<string> namespaces) ExtractAssemblyContentAndNamespaces(string manifestContent)
-    {
-        // Extract assembly content (everything between <assembly> and </assembly> tags, excluding the tags themselves)
-        var assemblyMatch = Regex.Match(manifestContent, @"<assembly[^>]*>(.*)</assembly>", RegexOptions.Singleline | RegexOptions.IgnoreCase);
-        if (!assemblyMatch.Success)
-        {
-            throw new InvalidOperationException("No <assembly> tag found in manifest content");
-        }
-
-        var assemblyContent = assemblyMatch.Groups[1].Value.Trim();
-
-        // Extract namespace declarations from the assembly tag
-        var namespaces = new List<string>();
-        var assemblyTag = manifestContent.Substring(assemblyMatch.Index, assemblyMatch.Groups[1].Index - assemblyMatch.Index);
         
-        // Find all xmlns declarations
-        var namespaceMatches = Regex.Matches(assemblyTag, @"xmlns(?::([^=]+))?\s*=\s*[""']([^""']*)[""']", RegexOptions.IgnoreCase);
-        foreach (Match match in namespaceMatches)
+        // Create a temporary manifest file
+        var workingDir = applicationLocation ?? Path.GetDirectoryName(exePath)!;
+        var tempManifestPath = Path.Combine(workingDir, "WindowsAppSDK_temp.manifest");
+        
+        try
         {
-            var prefix = match.Groups[1].Value;
-            var uri = match.Groups[2].Value;
+            await File.WriteAllTextAsync(tempManifestPath, windowsAppSDKManifestContent, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), cancellationToken);
             
-            if (string.IsNullOrEmpty(prefix))
-            {
-                namespaces.Add($@"xmlns=""{uri}""");
-            }
-            else
-            {
-                namespaces.Add($@"xmlns:{prefix}=""{uri}""");
-            }
+            // Use mt.exe to merge manifests
+            await EmbedManifestFileToExeAsync(exePath, tempManifestPath, applicationLocation, verbose, cancellationToken);
         }
-
-        // Also extract manifestVersion if present
-        var manifestVersionMatch = Regex.Match(assemblyTag, @"manifestVersion\s*=\s*[""']([^""']*)[""']", RegexOptions.IgnoreCase);
-        if (manifestVersionMatch.Success)
+        finally
         {
-            namespaces.Insert(0, $@"manifestVersion=""{manifestVersionMatch.Groups[1].Value}""");
+            TryDeleteFile(tempManifestPath);
         }
-
-        return (assemblyContent, namespaces);
     }
 
-    /// <summary>
-    /// Merges new XML content into an existing manifest, handling namespace declarations properly
-    /// </summary>
-    /// <param name="existingManifest">The existing manifest content</param>
-    /// <param name="newXmlContent">The new XML content to add</param>
-    /// <param name="cleanupPatterns">Regex patterns to remove existing content</param>
-    /// <param name="requiredNamespaces">Namespace declarations that should be added if missing</param>
-    /// <param name="verbose">Enable verbose logging</param>
-    /// <returns>The merged manifest content</returns>
-    private static string MergeManifestContent(
-        string existingManifest, 
-        string newXmlContent, 
-        string[]? cleanupPatterns, 
-        List<string>? requiredNamespaces,
-        bool verbose)
-    {
-        // Find the assembly tag and extract its attributes
-        var assemblyTagMatch = Regex.Match(existingManifest, @"<assembly[^>]*>", RegexOptions.IgnoreCase);
-        if (!assemblyTagMatch.Success)
-        {
-            throw new InvalidOperationException("No <assembly> tag found in existing manifest");
-        }
 
-        var assemblyTag = assemblyTagMatch.Value;
-        var beforeAssembly = existingManifest.Substring(0, assemblyTagMatch.Index);
-        var afterAssemblyTag = existingManifest.Substring(assemblyTagMatch.Index + assemblyTag.Length);
-
-        // Extract content between <assembly> and </assembly>
-        var assemblyEndMatch = Regex.Match(afterAssemblyTag, @"</assembly>", RegexOptions.IgnoreCase);
-        if (!assemblyEndMatch.Success)
-        {
-            throw new InvalidOperationException("No closing </assembly> tag found in existing manifest");
-        }
-
-        var existingAssemblyContent = afterAssemblyTag.Substring(0, assemblyEndMatch.Index);
-        var afterAssembly = afterAssemblyTag.Substring(assemblyEndMatch.Index);
-
-        // Clean up existing content if patterns are provided
-        if (cleanupPatterns != null)
-        {
-            foreach (var pattern in cleanupPatterns)
-            {
-                existingAssemblyContent = Regex.Replace(existingAssemblyContent, pattern, "", RegexOptions.IgnoreCase);
-            }
-        }
-
-        // Merge namespaces if required
-        var mergedAssemblyTag = assemblyTag;
-        if (requiredNamespaces != null && requiredNamespaces.Count > 0)
-        {
-            mergedAssemblyTag = MergeNamespaces(assemblyTag, requiredNamespaces, verbose);
-        }
-
-        // Combine everything together
-        var mergedContent = beforeAssembly + mergedAssemblyTag + existingAssemblyContent + "\n  " + newXmlContent + "\n" + afterAssembly;
-
-        return mergedContent;
-    }
-
-    /// <summary>
-    /// Merges required namespaces into an assembly tag if they don't already exist
-    /// </summary>
-    /// <param name="assemblyTag">The existing assembly tag</param>
-    /// <param name="requiredNamespaces">List of namespace declarations to add if missing</param>
-    /// <param name="verbose">Enable verbose logging</param>
-    /// <returns>The assembly tag with merged namespaces</returns>
-    private static string MergeNamespaces(string assemblyTag, List<string> requiredNamespaces, bool verbose)
-    {
-        var result = assemblyTag;
-
-        foreach (var namespaceDecl in requiredNamespaces)
-        {
-            // Skip manifestVersion as it should already exist
-            if (namespaceDecl.StartsWith("manifestVersion=", StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            // Extract namespace prefix and URI from the declaration
-            var nsMatch = Regex.Match(namespaceDecl, @"xmlns(?::([^=]+))?\s*=\s*[""']([^""']*)[""']", RegexOptions.IgnoreCase);
-            if (!nsMatch.Success)
-                continue;
-
-            var prefix = nsMatch.Groups[1].Value;
-            var uri = nsMatch.Groups[2].Value;
-
-            // Check if this namespace is already declared
-            string existingPattern;
-            if (string.IsNullOrEmpty(prefix))
-            {
-                existingPattern = @$"xmlns\s*=\s*[""']{Regex.Escape(uri)}[""']";
-            }
-            else
-            {
-                existingPattern = @$"xmlns\s*:\s*{Regex.Escape(prefix)}\s*=\s*[""']{Regex.Escape(uri)}[""']";
-            }
-
-            if (!Regex.IsMatch(result, existingPattern, RegexOptions.IgnoreCase))
-            {
-                // Add the namespace declaration before the closing >
-                result = Regex.Replace(result, @"(\s*>)$", $@"
-    {namespaceDecl}$1", RegexOptions.IgnoreCase);
-
-                if (verbose)
-                {
-                    Console.WriteLine($"Added namespace: {namespaceDecl}");
-                }
-            }
-        }
-
-        return result;
-    }
 
     private async Task SignMsixPackageAsync(string outputFolder, string certificatePassword, bool generateDevCert, bool installDevCert, bool verbose, string finalPackageName, string? extractedPublisher, string outputMsixPath, string? certPath, CancellationToken cancellationToken)
     {
