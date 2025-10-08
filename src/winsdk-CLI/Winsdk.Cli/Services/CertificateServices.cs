@@ -68,11 +68,16 @@ internal class CertificateServices
 
         try
         {
-            var (exitCode, _) = await _powerShellService.RunCommandAsync(command, verbose: verbose, environmentVariables: GetCertificateEnvironmentVariables(), cancellationToken: cancellationToken);
+            var (exitCode, output) = await _powerShellService.RunCommandAsync(command, verbose: verbose, environmentVariables: GetCertificateEnvironmentVariables(), cancellationToken: cancellationToken);
 
             if (exitCode != 0)
             {
-                throw new InvalidOperationException($"PowerShell command failed with exit code {exitCode}");
+                var message = $"PowerShell command failed with exit code {exitCode}";
+                if (verbose)
+                {
+                    message += $": {output}";
+                }
+                throw new InvalidOperationException(message);
             }
 
             if (verbose)
