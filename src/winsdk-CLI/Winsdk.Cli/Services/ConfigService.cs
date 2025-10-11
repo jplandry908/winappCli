@@ -1,10 +1,11 @@
 using System.Text;
+using Winsdk.Cli.Models;
 
-namespace Winsdk.Cli;
+namespace Winsdk.Cli.Services;
 
-internal sealed class ConfigService
+internal sealed class ConfigService : IConfigService
 {
-    public string ConfigPath { get; }
+    public string ConfigPath { get; set; }
 
     public ConfigService(string workingDir)
     {

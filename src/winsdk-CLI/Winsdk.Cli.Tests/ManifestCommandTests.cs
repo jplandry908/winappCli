@@ -1,6 +1,3 @@
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-using System.CommandLine;
-using System.CommandLine.Parsing;
 using Winsdk.Cli.Commands;
 using Winsdk.Cli.Services;
 
@@ -18,6 +15,10 @@ public class ManifestCommandTests
         // Create a temporary directory for testing
         _tempDirectory = Path.Combine(Path.GetTempPath(), $"WinsdkManifestTest_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_tempDirectory);
+
+        // Set up a temporary winsdk directory for testing (isolates tests from real winsdk directory)
+        var testWinsdkDirectory = Path.Combine(_tempDirectory, ".winsdk");
+        Directory.CreateDirectory(testWinsdkDirectory);
 
         // Create a fake logo file for testing
         _testLogoPath = Path.Combine(_tempDirectory, "testlogo.png");

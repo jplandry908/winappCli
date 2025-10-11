@@ -19,7 +19,7 @@ This test project provides comprehensive unit tests for the Winsdk CLI applicati
 - ✅ Password validation
 - ✅ Timestamp URL parameter handling
 - ✅ Error handling for missing files/certificates
-- ✅ Integration with BuildToolsService and CertificateServices
+- ✅ Integration with BuildToolsService and CertificateService
 
 #### Certificate Services Tests
 - ✅ Certificate generation using PowerShell
@@ -39,7 +39,7 @@ This test project provides comprehensive unit tests for the Winsdk CLI applicati
 
 The tests use a pragmatic approach that acknowledges the complexities of testing code signing operations:
 
-1. **Certificate Generation**: Uses the actual `CertificateServices.GenerateDevCertificateAsync()` method to create real test certificates via PowerShell.
+1. **Certificate Generation**: Uses the actual `CertificateService.GenerateDevCertificateAsync()` method to create real test certificates via PowerShell.
 
 2. **File Validation**: Tests file existence, path resolution, and basic validation without requiring real executables.
 

@@ -1,17 +1,13 @@
-﻿using System.CommandLine;
+using System.CommandLine;
+using Winsdk.Cli.Services;
 
 namespace Winsdk.Cli.Commands;
 
 internal class PackageCommand : Command
 {
-    private readonly MsixService _msixService;
-
     public PackageCommand()
         : base("package", "Create an MSIX package from a prepared package directory")
     {
-        var configService = new ConfigService(Directory.GetCurrentDirectory());
-        var buildToolsService = new BuildToolsService(configService);
-        _msixService = new MsixService(buildToolsService);
         var inputFolderArgument = new Argument<string>("input-folder")
         {
             Description = "Input folder with package layout (default: .winsdk folder in current project)",
@@ -87,6 +83,21 @@ internal class PackageCommand : Command
 
         SetAction(async (parseResult, ct) =>
         {
+            var configService = new ConfigService(Directory.GetCurrentDirectory());
+            var winsdkDirectoryService = new WinsdkDirectoryService();
+            var nugetService = new NugetService();
+            var packageCacheService = new PackageCacheService(winsdkDirectoryService);
+            var packageService = new PackageInstallationService(configService, nugetService, packageCacheService);
+            var buildToolsService = new BuildToolsService(configService, winsdkDirectoryService, packageService);
+            var powerShellService = new PowerShellService();
+            var certificateService = new CertificateService(buildToolsService, powerShellService);
+            var cppWinrtService = new CppWinrtService();
+            var packageLayoutService = new PackageLayoutService();
+            var manifestService = new ManifestService();
+            var devModeService = new DevModeService();
+            var workspaceSetupService = new WorkspaceSetupService(configService, winsdkDirectoryService, packageService, buildToolsService, cppWinrtService, packageLayoutService, certificateService, powerShellService, nugetService, manifestService, devModeService);
+            var msixService = new MsixService(winsdkDirectoryService, configService, buildToolsService, powerShellService, certificateService, packageCacheService, workspaceSetupService);
+
             var inputFolder = parseResult.GetValue(inputFolderArgument) ?? 
                               (MsixService.FindProjectManifest() != null ? 
                                Path.GetDirectoryName(MsixService.FindProjectManifest()!)! : 
@@ -108,7 +119,7 @@ internal class PackageCommand : Command
                 // Auto-sign if certificate is provided or if generate-cert is specified
                 var autoSign = !string.IsNullOrEmpty(certPath) || generateCert;
 
-                var result = await _msixService.CreateMsixPackageAsync(inputFolder, outputFolder, name, skipPri, autoSign, certPath, certPassword, generateCert, installCert, publisher, manifestPath, selfContained, verbose, ct);
+                var result = await msixService.CreateMsixPackageAsync(inputFolder, outputFolder, name, skipPri, autoSign, certPath, certPassword, generateCert, installCert, publisher, manifestPath, selfContained, verbose, ct);
 
                 Console.WriteLine("✅ MSIX package created successfully!");
 

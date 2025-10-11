@@ -59,6 +59,20 @@ internal class InitCommand : Command
 
         SetAction(async (parseResult, ct) =>
         {
+            var configService = new ConfigService(Directory.GetCurrentDirectory());
+            var winsdkDirectoryService = new WinsdkDirectoryService();
+            var nugetService = new NugetService();
+            var cacheService = new PackageCacheService(winsdkDirectoryService);
+            var packageInstallationService = new PackageInstallationService(configService, nugetService, cacheService);
+            var buildToolsService = new BuildToolsService(configService, winsdkDirectoryService, packageInstallationService);
+            var cppWinrtService = new CppWinrtService();
+            var packageLayoutService = new PackageLayoutService();
+            var powerShellService = new PowerShellService();
+            var certificateService = new CertificateService(buildToolsService, powerShellService);
+            var manifestService = new ManifestService();
+            var devModeService = new DevModeService();
+            var workspaceSetupService = new WorkspaceSetupService(configService, winsdkDirectoryService, packageInstallationService, buildToolsService, cppWinrtService, packageLayoutService, certificateService, powerShellService, nugetService, manifestService, devModeService);
+
             var baseDirectory = parseResult.GetValue(baseDirectoryArgument);
             var configDir = parseResult.GetRequiredValue(configDirOption);
             var prerelease = parseResult.GetValue(prereleaseOption);
@@ -76,8 +90,6 @@ internal class InitCommand : Command
                 return 1;
             }
 
-            var workspaceSetup = new WorkspaceSetupService();
-
             var options = new WorkspaceSetupOptions
             {
                 BaseDirectory = baseDirectory ?? Directory.GetCurrentDirectory(),
@@ -94,7 +106,7 @@ internal class InitCommand : Command
                 ConfigOnly = configOnly
             };
 
-            return await workspaceSetup.SetupWorkspaceAsync(options, ct);
+            return await workspaceSetupService.SetupWorkspaceAsync(options, ct);
         });
     }
 }

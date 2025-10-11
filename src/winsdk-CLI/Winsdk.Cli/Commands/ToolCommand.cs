@@ -1,15 +1,12 @@
 using System.CommandLine;
+using Winsdk.Cli.Services;
 
 namespace Winsdk.Cli.Commands;
 
 internal class ToolCommand : Command
 {
-    private readonly BuildToolsService _buildToolsService;
-
     public ToolCommand() : base("tool", "Run a build tool command with Windows SDK paths")
     {
-        var configService = new ConfigService(Directory.GetCurrentDirectory());
-        _buildToolsService = new BuildToolsService(configService);
         Aliases.Add("run-buildtool");
         this.TreatUnmatchedTokensAsErrors = false;
 
@@ -21,6 +18,13 @@ internal class ToolCommand : Command
 
         SetAction(async (parseResult, ct) =>
         {
+            var configService = new ConfigService(Directory.GetCurrentDirectory());
+            var directoryService = new WinsdkDirectoryService();
+            var nugetService = new NugetService();
+            var cacheService = new PackageCacheService(directoryService);
+            var packageService = new PackageInstallationService(configService, nugetService, cacheService);
+            var buildToolsService = new BuildToolsService(configService, directoryService, packageService);
+        
             var args = parseResult.UnmatchedTokens.ToArray();
             var quiet = parseResult.GetValue(quietOption);
             
@@ -36,16 +40,16 @@ internal class ToolCommand : Command
             var toolArgs = args.Skip(1).ToArray();
             
             // First, try to find the tool in existing installation
-            var toolPath = _buildToolsService.GetBuildToolPath(toolName);
+            var toolPath = buildToolsService.GetBuildToolPath(toolName);
             if (toolPath == null && !toolName.EndsWith(".exe"))
             {
-                toolPath = _buildToolsService.GetBuildToolPath(toolName + ".exe");
+                toolPath = buildToolsService.GetBuildToolPath(toolName + ".exe");
             }
             
             // If tool not found, ensure BuildTools are installed
             if (toolPath == null)
             {
-                var binPath = await _buildToolsService.EnsureBuildToolsAsync(quiet: quiet, cancellationToken: ct);
+                var binPath = await buildToolsService.EnsureBuildToolsAsync(quiet: quiet, cancellationToken: ct);
                 if (binPath == null)
                 {
                     Console.Error.WriteLine($"Could not install or find Windows SDK Build Tools.");
@@ -53,10 +57,10 @@ internal class ToolCommand : Command
                 }
                 
                 // Try again after installation
-                toolPath = _buildToolsService.GetBuildToolPath(toolName);
+                toolPath = buildToolsService.GetBuildToolPath(toolName);
                 if (toolPath == null && !toolName.EndsWith(".exe"))
                 {
-                    toolPath = _buildToolsService.GetBuildToolPath(toolName + ".exe");
+                    toolPath = buildToolsService.GetBuildToolPath(toolName + ".exe");
                 }
             }
             

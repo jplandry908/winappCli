@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Winsdk.Cli.Services;
 
 namespace Winsdk.Cli.Commands;
 
@@ -39,8 +40,19 @@ internal class CreateDebugIdentityCommand : Command
             var verbose = parseResult.GetValue(Program.VerboseOption);
 
             var configService = new ConfigService(Directory.GetCurrentDirectory());
-            var buildToolsService = new BuildToolsService(configService);
-            var msixService = new MsixService(buildToolsService);
+            var winsdkDirectoryService = new WinsdkDirectoryService();
+            var nugetService = new NugetService();
+            var packageCacheService = new PackageCacheService(winsdkDirectoryService);
+            var packageService = new PackageInstallationService(configService, nugetService, packageCacheService);
+            var buildToolsService = new BuildToolsService(configService, winsdkDirectoryService, packageService);
+            var powerShellService = new PowerShellService();
+            var certificateService = new CertificateService(buildToolsService, powerShellService);
+            var cppWinrtService = new CppWinrtService();
+            var packageLayoutService = new PackageLayoutService();
+            var manifestService = new ManifestService();
+            var devModeService = new DevModeService();
+            var workspaceSetupService = new WorkspaceSetupService(configService, winsdkDirectoryService, packageService, buildToolsService, cppWinrtService, packageLayoutService, certificateService, powerShellService, nugetService, manifestService, devModeService);
+            var msixService = new MsixService(winsdkDirectoryService, configService, buildToolsService, powerShellService, certificateService, packageCacheService, workspaceSetupService);
 
             if (!File.Exists(executablePath))
             {

@@ -1,4 +1,6 @@
 using System.CommandLine;
+using Winsdk.Cli.Helpers;
+using Winsdk.Cli.Models;
 using Winsdk.Cli.Services;
 
 namespace Winsdk.Cli.Commands;
@@ -17,18 +19,25 @@ internal class UpdateCommand : Command
 
         SetAction(async (parseResult, ct) =>
         {
+            var configService = new ConfigService(Directory.GetCurrentDirectory());
+            var winsdkDirectoryService = new WinsdkDirectoryService();
+            var nugetService = new NugetService();
+            var cacheService = new PackageCacheService(winsdkDirectoryService);
+            var packageInstallationService = new PackageInstallationService(configService, nugetService, cacheService);
+            var buildToolsService = new BuildToolsService(configService, winsdkDirectoryService, packageInstallationService);
+            var cppWinrtService = new CppWinrtService();
+            var packageLayoutService = new PackageLayoutService();
+            var powerShellService = new PowerShellService();
+            var certificateService = new CertificateService(buildToolsService, powerShellService);
+            var manifestService = new ManifestService();
+            var devModeService = new DevModeService();
+            var workspaceSetupService = new WorkspaceSetupService(configService, winsdkDirectoryService, packageInstallationService, buildToolsService, cppWinrtService, packageLayoutService, certificateService, powerShellService, nugetService, manifestService, devModeService);
+
             var prerelease = parseResult.GetValue(prereleaseOption);
             var verbose = parseResult.GetValue(Program.VerboseOption);
 
             try
             {
-                var configService = new ConfigService(Directory.GetCurrentDirectory());
-                var buildToolsService = new BuildToolsService(configService);
-                var packageService = new PackageInstallationService(configService);
-                var nugetService = new NugetService();
-
-                var winsdkDir = BuildToolsService.GetGlobalWinsdkDirectory();
-
                 // Step 1: Find yaml config file
                 if (verbose)
                 {
@@ -97,7 +106,9 @@ internal class UpdateCommand : Command
                             Console.WriteLine($"{UiSymbols.Package} Installing updated packages...");
                             var packageNames = updatedConfig.Packages.Select(p => p.Name).ToArray();
                             
-                            var installedVersions = await packageService.InstallPackagesAsync(
+                            var winsdkDir = winsdkDirectoryService.GetGlobalWinsdkDirectory();
+
+                            var installedVersions = await packageInstallationService.InstallPackagesAsync(
                                 winsdkDir,
                                 packageNames,
                                 includeExperimental: prerelease,
@@ -148,7 +159,27 @@ internal class UpdateCommand : Command
                 }
 
                 // Step 3: Install Windows App SDK runtime if available
-                await InstallWindowsAppRuntimeIfAvailableAsync(verbose, ct);
+                // Find MSIX directory using WorkspaceSetupService logic
+                var msixDir = workspaceSetupService.FindWindowsAppSdkMsixDirectory();
+
+                if (msixDir != null)
+                {
+                    if (!verbose)
+                    {
+                        Console.WriteLine($"{UiSymbols.Wrench} Installing Windows App Runtime...");
+                    }
+
+                    await workspaceSetupService.InstallWindowsAppRuntimeAsync(msixDir, verbose, ct);
+
+                    if (!verbose)
+                    {
+                        Console.WriteLine($"{UiSymbols.Check} Windows App Runtime installation complete");
+                    }
+                }
+                else if (verbose)
+                {
+                    Console.WriteLine($"{UiSymbols.Note} Windows App SDK packages not found, skipping runtime installation");
+                }
 
                 Console.WriteLine($"{UiSymbols.Party} Update completed successfully!");
                 return 0;
@@ -163,31 +194,5 @@ internal class UpdateCommand : Command
                 return 1;
             }
         });
-    }
-
-    private static async Task InstallWindowsAppRuntimeIfAvailableAsync(bool verbose, CancellationToken cancellationToken)
-    {
-        // Find MSIX directory using WorkspaceSetupService logic
-        var msixDir = WorkspaceSetupService.FindWindowsAppSdkMsixDirectory();
-        
-        if (msixDir != null)
-        {
-            if (!verbose)
-            {
-                Console.WriteLine($"{UiSymbols.Wrench} Installing Windows App Runtime...");
-            }
-
-            var workspaceSetupService = new WorkspaceSetupService();
-            await workspaceSetupService.InstallWindowsAppRuntimeAsync(msixDir, verbose, cancellationToken);
-
-            if (!verbose)
-            {
-                Console.WriteLine($"{UiSymbols.Check} Windows App Runtime installation complete");
-            }
-        }
-        else if (verbose)
-        {
-            Console.WriteLine($"{UiSymbols.Note} Windows App SDK packages not found, skipping runtime installation");
-        }
     }
 }

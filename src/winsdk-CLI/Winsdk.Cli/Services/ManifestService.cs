@@ -1,8 +1,9 @@
 using System.Text.RegularExpressions;
+using Winsdk.Cli.Helpers;
 
 namespace Winsdk.Cli.Services;
 
-internal class ManifestService
+internal class ManifestService : IManifestService
 {
     public async Task GenerateManifestAsync(
         string directory, 
@@ -30,9 +31,8 @@ internal class ManifestService
         }
 
         // Interactive mode if not --yes (get defaults for prompts)
-        var defaults = new SystemDefaultsService();
-        packageName ??= defaults.GetDefaultPackageName(directory);
-        publisherName ??= defaults.GetDefaultPublisherCN();
+        packageName ??= SystemDefaultsHelper.GetDefaultPackageName(directory);
+        publisherName ??= SystemDefaultsHelper.GetDefaultPublisherCN();
         executable ??= $"{packageName}.exe";
 
         // Interactive mode if not --yes

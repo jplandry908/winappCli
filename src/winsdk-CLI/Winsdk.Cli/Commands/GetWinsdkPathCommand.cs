@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Winsdk.Cli.Services;
 
 namespace Winsdk.Cli.Commands;
 
@@ -16,6 +17,7 @@ internal class GetWinsdkPathCommand : Command
 
         SetAction((parseResult) =>
         {
+            var directoryService = new WinsdkDirectoryService();
             var verbose = parseResult.GetValue(Program.VerboseOption);
             var global = parseResult.GetValue(globalOption);
 
@@ -27,14 +29,13 @@ internal class GetWinsdkPathCommand : Command
                 if (global)
                 {
                     // Get the global .winsdk directory
-                    winsdkDir = BuildToolsService.GetGlobalWinsdkDirectory();
+                    winsdkDir = directoryService.GetGlobalWinsdkDirectory();
                     directoryType = "Global";
                 }
                 else
                 {
                     // Get the local .winsdk directory
-                    var buildToolsService = new BuildToolsService(new ConfigService(Directory.GetCurrentDirectory()));
-                    winsdkDir = buildToolsService.GetLocalWinsdkDirectory(Directory.GetCurrentDirectory());
+                    winsdkDir = directoryService.GetLocalWinsdkDirectory(Directory.GetCurrentDirectory());
                     directoryType = "Local";
                 }
                 

@@ -1,16 +1,18 @@
+using Winsdk.Cli.Helpers;
+
 namespace Winsdk.Cli.Services;
 
-internal class CertificateServices
+internal class CertificateService : ICertificateService
 {
-    private readonly BuildToolsService _buildToolsService;
-    private readonly PowerShellService _powerShellService;
+    private readonly IBuildToolsService _buildToolsService;
+    private readonly IPowerShellService _powerShellService;
 
     public const string DefaultCertFileName = "devcert.pfx";
 
-    public CertificateServices(BuildToolsService buildToolsService)
+    public CertificateService(IBuildToolsService buildToolsService, IPowerShellService powerShellService)
     {
         _buildToolsService = buildToolsService;
-        _powerShellService = new PowerShellService();
+        _powerShellService = powerShellService;
     }
 
     /// <summary>
@@ -98,7 +100,7 @@ internal class CertificateServices
         }
     }
 
-    internal async Task<bool> InstallCertificateAsync(string certPath, string password, bool force, bool verbose, CancellationToken cancellationToken = default)
+    public async Task<bool> InstallCertificateAsync(string certPath, string password, bool force, bool verbose, CancellationToken cancellationToken = default)
     {
         if (!Path.IsPathRooted(certPath))
         {
@@ -238,8 +240,6 @@ internal class CertificateServices
         bool verbose = true,
         CancellationToken cancellationToken = default)
     {
-        var msixService = new MsixService(_buildToolsService);
-
         try
         {
             // Skip if certificate already exists and skipIfExists is true
@@ -259,11 +259,10 @@ internal class CertificateServices
             }
 
             // Get default publisher from system defaults
-            var systemDefaults = new SystemDefaultsService();
-            var defaultPublisher = systemDefaults.GetDefaultPublisherCN();
+            var defaultPublisher = SystemDefaultsHelper.GetDefaultPublisherCN();
 
             // Infer publisher using the specified hierarchy
-            string publisher = await InferPublisherAsync(explicitPublisher, manifestPath, defaultPublisher, msixService, verbose, cancellationToken);
+            string publisher = await InferPublisherAsync(explicitPublisher, manifestPath, defaultPublisher, verbose, cancellationToken);
 
             if (verbose)
             {
@@ -346,7 +345,6 @@ internal class CertificateServices
         string? explicitPublisher, 
         string? manifestPath, 
         string defaultPublisher,
-        MsixService msixService,
         bool verbose, 
         CancellationToken cancellationToken)
     {
@@ -370,7 +368,7 @@ internal class CertificateServices
                     Console.WriteLine($"Extracting publisher from manifest: {manifestPath}");
                 }
                 
-                var identityInfo = await msixService.ParseAppxManifestFromPathAsync(manifestPath, cancellationToken);
+                var identityInfo = await MsixService.ParseAppxManifestFromPathAsync(manifestPath, cancellationToken);
                 return identityInfo.Publisher;
             }
             catch (Exception ex)
@@ -393,7 +391,7 @@ internal class CertificateServices
                     Console.WriteLine($"Found project manifest: {projectManifestPath}");
                 }
                 
-                var identityInfo = await msixService.ParseAppxManifestFromPathAsync(projectManifestPath, cancellationToken);
+                var identityInfo = await MsixService.ParseAppxManifestFromPathAsync(projectManifestPath, cancellationToken);
                 return identityInfo.Publisher;
             }
             catch (Exception ex)

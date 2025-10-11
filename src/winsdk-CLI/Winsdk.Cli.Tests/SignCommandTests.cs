@@ -11,7 +11,7 @@ public class SignCommandTests
     private string _testCertificatePath = null!;
     private ConfigService _configService = null!;
     private BuildToolsService _buildToolsService = null!;
-    private CertificateServices _certificateServices = null!;
+    private CertificateService _certificateService = null!;
 
     [TestInitialize]
     public async Task Setup()
@@ -19,6 +19,10 @@ public class SignCommandTests
         // Create a temporary directory for testing
         _tempDirectory = Path.Combine(Path.GetTempPath(), $"WinsdkSignTest_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_tempDirectory);
+
+        // Set up a temporary winsdk directory for testing (isolates tests from real winsdk directory)
+        var testWinsdkDirectory = Path.Combine(_tempDirectory, ".winsdk");
+        Directory.CreateDirectory(testWinsdkDirectory);
 
         // Create a fake executable file to sign
         _testExecutablePath = Path.Combine(_tempDirectory, "TestApp.exe");
@@ -29,8 +33,14 @@ public class SignCommandTests
 
         // Set up services
         _configService = new ConfigService(_tempDirectory);
-        _buildToolsService = new BuildToolsService(_configService);
-        _certificateServices = new CertificateServices(_buildToolsService);
+        var directoryService = new WinsdkDirectoryService();
+        directoryService.SetCacheDirectoryForTesting(testWinsdkDirectory);
+        var nugetService = new NugetService();
+        var cacheService = new PackageCacheService(directoryService);
+        var packageService = new PackageInstallationService(_configService, nugetService, cacheService);
+        _buildToolsService = new BuildToolsService(_configService, directoryService, packageService);
+        var powerShellService = new PowerShellService();
+        _certificateService = new CertificateService(_buildToolsService, powerShellService);
 
         // Create a temporary certificate for testing
         await CreateTestCertificateAsync();
@@ -70,7 +80,7 @@ public class SignCommandTests
     private async Task CreateTestCertificateAsync()
     {
         // Generate a test certificate using CertificateServices
-        var result = await _certificateServices.GenerateDevCertificateAsync(
+        var result = await _certificateService.GenerateDevCertificateAsync(
             publisher: "CN=WinsdkTestPublisher",
             outputPath: _testCertificatePath,
             password: "testpassword",
@@ -240,13 +250,13 @@ public class SignCommandTests
         // to ensure it works correctly without going through the command parsing layer
         
         // Act & Assert
-        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () =>
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () =>
         {
             // This should fail either because:
             // 1. BuildTools aren't installed in our test environment, OR
             // 2. The file format is invalid for signing
             // Both are acceptable failures that show the validation is working
-            await _certificateServices.SignFileAsync(
+            await _certificateService.SignFileAsync(
                 _testExecutablePath,
                 _testCertificatePath,
                 "testpassword",

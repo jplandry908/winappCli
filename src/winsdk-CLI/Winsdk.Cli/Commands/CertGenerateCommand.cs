@@ -1,21 +1,13 @@
-﻿using System.CommandLine;
+using System.CommandLine;
 using Winsdk.Cli.Services;
 
 namespace Winsdk.Cli.Commands;
 
 internal class CertGenerateCommand : Command
 {
-    private readonly CertificateServices _certificateService;
-    private readonly MsixService _msixService;
-
     public CertGenerateCommand()
         : base("generate", "Generate a new development certificate")
     {
-        var configService = new ConfigService(Directory.GetCurrentDirectory());
-        var buildToolsService = new BuildToolsService(configService);
-        _certificateService = new CertificateServices(buildToolsService);
-        _msixService = new MsixService(buildToolsService);
-        
         var publisherOption = new Option<string>("--publisher")
         {
             Description = "Publisher name for the generated certificate. If not specified, will be inferred from manifest."
@@ -28,7 +20,7 @@ internal class CertGenerateCommand : Command
         var outputOption = new Option<string>("--output")
         {
             Description = "Output path for the generated PFX file",
-            DefaultValueFactory = (argumentResult) => CertificateServices.DefaultCertFileName
+            DefaultValueFactory = (argumentResult) => CertificateService.DefaultCertFileName
         };
         outputOption.AcceptLegalFileNamesOnly();
         var passwordOption = new Option<string>("--password")
@@ -57,6 +49,21 @@ internal class CertGenerateCommand : Command
 
         SetAction(async (parseResult, ct) =>
         {
+            var configService = new ConfigService(Directory.GetCurrentDirectory());
+            var winsdkDirectoryService = new WinsdkDirectoryService();
+            var nugetService = new NugetService();
+            var packageCacheService = new PackageCacheService(winsdkDirectoryService);
+            var packageService = new PackageInstallationService(configService, nugetService, packageCacheService);
+            var buildToolsService = new BuildToolsService(configService, winsdkDirectoryService, packageService);
+            var powerShellService = new PowerShellService();
+            var certificateService = new CertificateService(buildToolsService, powerShellService);
+            var cppWinrtService = new CppWinrtService();
+            var packageLayoutService = new PackageLayoutService();
+            var manifestService = new ManifestService();
+            var devModeService = new DevModeService();
+            var workspaceSetupService = new WorkspaceSetupService(configService, winsdkDirectoryService, packageService, buildToolsService, cppWinrtService, packageLayoutService, certificateService, powerShellService, nugetService, manifestService, devModeService);
+            var msixService = new MsixService(winsdkDirectoryService, configService, buildToolsService, powerShellService, certificateService, packageCacheService, workspaceSetupService);
+        
             var publisher = parseResult.GetValue(publisherOption);
             var manifestPath = parseResult.GetValue(manifestOption);
             var output = parseResult.GetRequiredValue(outputOption);
@@ -74,7 +81,7 @@ internal class CertGenerateCommand : Command
             }
 
             // Use the consolidated certificate generation method with all console output and error handling
-            await _certificateService.GenerateDevCertificateWithInferenceAsync(
+            await certificateService.GenerateDevCertificateWithInferenceAsync(
                 outputPath: output,
                 explicitPublisher: publisher,
                 manifestPath: manifestPath,

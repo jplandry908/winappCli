@@ -1,18 +1,13 @@
-﻿using System.CommandLine;
+using System.CommandLine;
 using Winsdk.Cli.Services;
 
 namespace Winsdk.Cli.Commands;
 
 internal class CertInstallCommand : Command
 {
-    private readonly CertificateServices _certificateService;
-
     public CertInstallCommand()
         : base("install", "Install a certificate to the local machine store")
     {
-        var configService = new ConfigService(Directory.GetCurrentDirectory());
-        var buildToolsService = new BuildToolsService(configService);
-        _certificateService = new CertificateServices(buildToolsService);
         var certPathArgument = new Argument<string>("cert-path")
         {
             Description = "Path to the certificate file (PFX or CER)"
@@ -34,13 +29,22 @@ internal class CertInstallCommand : Command
 
         SetAction(async (parseResult, ct) =>
         {
+            var configService = new ConfigService(Directory.GetCurrentDirectory());
+            var directoryService = new WinsdkDirectoryService();
+            var nugetService = new NugetService();
+            var cacheService = new PackageCacheService(directoryService);
+            var packageService = new PackageInstallationService(configService, nugetService, cacheService);
+            var buildToolsService = new BuildToolsService(configService, directoryService, packageService);
+            var powerShellService = new PowerShellService();
+            var certificateService = new CertificateService(buildToolsService, powerShellService);
+        
             var certPath = parseResult.GetRequiredValue(certPathArgument);
             var password = parseResult.GetRequiredValue(passwordOption);
             var force = parseResult.GetRequiredValue(forceOption);
             var verbose = parseResult.GetValue(Program.VerboseOption);
             try
             {
-                var result = await _certificateService.InstallCertificateAsync(certPath, password, force, verbose, ct);
+                var result = await certificateService.InstallCertificateAsync(certPath, password, force, verbose, ct);
                 if (!result)
                 {
                     Console.WriteLine($"ℹ️ Certificate is already installed");

@@ -5,13 +5,8 @@ namespace Winsdk.Cli.Commands;
 
 internal class SignCommand : Command
 {
-    private readonly CertificateServices _certificateService;
-
     public SignCommand() : base("sign", "Sign a file/package with a certificate")
     {
-        var configService = new ConfigService(Directory.GetCurrentDirectory());
-        var buildToolsService = new BuildToolsService(configService);
-        _certificateService = new CertificateServices(buildToolsService);
         var filePathArgument = new Argument<string>("file-path")
         {
             Description = "Path to the file/package to sign"
@@ -38,6 +33,15 @@ internal class SignCommand : Command
 
         SetAction(async (parseResult, ct) =>
         {
+            var configService = new ConfigService(Directory.GetCurrentDirectory());
+            var directoryService = new WinsdkDirectoryService();
+            var nugetService = new NugetService();
+            var cacheService = new PackageCacheService(directoryService);
+            var packageService = new PackageInstallationService(configService, nugetService, cacheService);
+            var buildToolsService = new BuildToolsService(configService, directoryService, packageService);
+            var powerShellService = new PowerShellService();
+            var certificateService = new CertificateService(buildToolsService, powerShellService);
+        
             var filePath = parseResult.GetRequiredValue(filePathArgument);
             var certPath = parseResult.GetRequiredValue(certPathArgument);
             var password = parseResult.GetValue(passwordOption);
@@ -46,7 +50,7 @@ internal class SignCommand : Command
 
             try
             {
-                await _certificateService.SignFileAsync(filePath, certPath, password, timestamp, verbose, ct);
+                await certificateService.SignFileAsync(filePath, certPath, password, timestamp, verbose, ct);
 
                 Console.WriteLine($"🔐 Signed file: {filePath}");
                 return 0;

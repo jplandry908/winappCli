@@ -27,10 +27,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- No external CLI deps; using lightweight manual parsing for NativeAOT-friendliness -->
-  </ItemGroup>
-
-  <ItemGroup>
     <!-- Embed templates and default MSIX assets -->
     <EmbeddedResource Include="Templates\**\*.*" />
     <EmbeddedResource Include="Assets\msix_default_assets\**\*.*" />

@@ -1,5 +1,3 @@
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 namespace Winsdk.Cli.Tests;
 
 /// <summary>
