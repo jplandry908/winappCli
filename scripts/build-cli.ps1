@@ -12,7 +12,8 @@
 
 param(
     [switch]$Clean = $false,
-    [switch]$SkipTests = $false
+    [switch]$SkipTests = $false,
+    [switch]$FailOnTestFailure = $false
 )
 
 # Ensure we're running from the project root
@@ -22,39 +23,111 @@ Write-Host "Project root: $ProjectRoot" -ForegroundColor Gray
 Set-Location $ProjectRoot
 
 # Define paths
+$CliSolutionPath = "src\winsdk-CLI\winsdk.sln"
 $CliProjectPath = "src\winsdk-CLI\Winsdk.Cli\Winsdk.Cli.csproj"
 $NpmProjectPath = "src\winsdk-npm"
 $ArtifactsPath = "artifacts"
+$TestResultsPath = "TestResults"
 
 Write-Host "[*] Starting Windows SDK build process..." -ForegroundColor Green
 Write-Host "Project root: $ProjectRoot" -ForegroundColor Gray
 
-Write-Host "[CLEAN] Cleaning artifacts..." -ForegroundColor Yellow
+Write-Host "[CLEAN] Cleaning artifacts and test results..." -ForegroundColor Yellow
 if (Test-Path $ArtifactsPath) {
     Remove-Item $ArtifactsPath -Recurse -Force
+}
+if (Test-Path $TestResultsPath) {
+    Remove-Item $TestResultsPath -Recurse -Force
 }
 
 # Create artifacts directory
 Write-Host "[SETUP] Creating artifacts directory..." -ForegroundColor Blue
 New-Item -ItemType Directory -Path $ArtifactsPath -Force | Out-Null
 
-# Step 1: Build CLI for x64
-Write-Host "[BUILD] Building CLI for x64..." -ForegroundColor Blue
+# Step 1: Build CLI solution
+Write-Host "[BUILD] Building CLI solution..." -ForegroundColor Blue
+dotnet build $CliSolutionPath -c Release
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Failed to build CLI solution"
+    exit 1
+}
+
+# Step 2: Run tests (unless skipped)
+if (-not $SkipTests) {
+    Write-Host "[TEST] Running tests..." -ForegroundColor Blue
+    dotnet test $CliSolutionPath -c Release --no-build --logger:"trx;LogFileName=TestResults.trx"
+    $TestExitCode = $LASTEXITCODE
+    
+    if ($TestExitCode -ne 0) {
+        Write-Warning "Tests failed with exit code $TestExitCode"
+        if ($FailOnTestFailure) {
+            Write-Error "Stopping build due to test failures (FailOnTestFailure flag set)"
+            exit 1
+        } else {
+            Write-Host "[TEST] Continuing build despite test failures..." -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "[TEST] Tests passed!" -ForegroundColor Green
+    }
+    
+    # Copy test results to artifacts - find all TRX files
+    Write-Host "[TEST] Collecting test results..." -ForegroundColor Blue
+    $TrxFiles = Get-ChildItem -Path "src\winsdk-CLI" -Filter "*.trx" -Recurse -File
+    if ($TrxFiles) {
+        New-Item -ItemType Directory -Path "$ArtifactsPath\TestResults" -Force | Out-Null
+        foreach ($trxFile in $TrxFiles) {
+            Copy-Item $trxFile.FullName "$ArtifactsPath\TestResults\" -Force
+            Write-Host "[TEST] Copied: $($trxFile.Name)" -ForegroundColor Gray
+        }
+        Write-Host "[TEST] Test results copied successfully ($($TrxFiles.Count) file(s))" -ForegroundColor Green
+    } else {
+        Write-Warning "No TRX test result files found in src\winsdk-CLI"
+    }
+} else {
+    Write-Host "[TEST] Skipping tests (SkipTests flag set)" -ForegroundColor Yellow
+}
+
+# Step 3: Publish CLI for x64
+Write-Host "[PUBLISH] Publishing CLI for x64..." -ForegroundColor Blue
 dotnet publish $CliProjectPath -c Release -r win-x64 --self-contained -o "$ArtifactsPath\cli\win-x64"
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "Failed to build CLI for x64"
+    Write-Error "Failed to publish CLI for x64"
     exit 1
 }
 
-# Step 2: Build CLI for arm64
-Write-Host "[BUILD] Building CLI for arm64..." -ForegroundColor Blue
+# Step 4: Publish CLI for arm64
+Write-Host "[PUBLISH] Publishing CLI for arm64..." -ForegroundColor Blue
 dotnet publish $CliProjectPath -c Release -r win-arm64 --self-contained -o "$ArtifactsPath\cli\win-arm64"
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "Failed to build CLI for arm64"
+    Write-Error "Failed to publish CLI for arm64"
     exit 1
 }
 
-# Step 3: Prepare npm package
+# Step 5: Calculate version with build number
+Write-Host "[VERSION] Calculating package version..." -ForegroundColor Blue
+
+# Read base version from version.json
+$VersionJsonPath = "$ProjectRoot\version.json"
+if (-not (Test-Path $VersionJsonPath)) {
+    Write-Error "version.json not found at $VersionJsonPath"
+    exit 1
+}
+
+$VersionJson = Get-Content $VersionJsonPath | ConvertFrom-Json
+$BaseVersion = $VersionJson.version
+
+# Get build number
+$BuildNumber = & "$PSScriptRoot\get-build-number.ps1"
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Failed to get build number"
+    exit 1
+}
+
+# Construct full version (npm format: major.minor.patch-build.number)
+$FullVersion = "$BaseVersion-build.$BuildNumber"
+Write-Host "[VERSION] Package version: $FullVersion" -ForegroundColor Cyan
+
+# Step 6: Prepare npm package
 Write-Host "[NPM] Preparing npm package..." -ForegroundColor Blue
 
 # Clean npm bin directory first
@@ -63,6 +136,17 @@ npm run clean
 if ($LASTEXITCODE -ne 0) {
     Write-Warning "npm clean failed, continuing..."
 }
+
+# Backup original package.json
+Write-Host "[NPM] Setting package version to $FullVersion..." -ForegroundColor Blue
+$PackageJsonPath = "package.json"
+Copy-Item $PackageJsonPath "$PackageJsonPath.backup" -Force
+
+# Update package.json version temporarily
+$PackageJson = Get-Content $PackageJsonPath | ConvertFrom-Json
+$OriginalVersion = $PackageJson.version
+$PackageJson.version = $FullVersion
+$PackageJson | ConvertTo-Json -Depth 100 | Set-Content $PackageJsonPath
 
 # Copy the CLI binaries we just built instead of rebuilding them
 Write-Host "[NPM] Copying CLI binaries to npm package..." -ForegroundColor Blue
@@ -76,11 +160,19 @@ Copy-Item "$ProjectRoot\$ArtifactsPath\cli\win-arm64\*" "$NpmBinPath\win-arm64\"
 
 Pop-Location
 
-# Step 4: Create npm package tarball
+# Step 7: Create npm package tarball
 Write-Host "[PACK] Creating npm package tarball..." -ForegroundColor Blue
 Push-Location $NpmProjectPath
 npm pack --pack-destination "..\..\$ArtifactsPath"
-if ($LASTEXITCODE -ne 0) {
+$PackResult = $LASTEXITCODE
+
+# Restore original package.json
+Write-Host "[NPM] Restoring original package.json..." -ForegroundColor Blue
+if (Test-Path "$PackageJsonPath.backup") {
+    Move-Item "$PackageJsonPath.backup" $PackageJsonPath -Force
+}
+
+if ($PackResult -ne 0) {
     Write-Error "Failed to create npm package"
     Pop-Location
     exit 1
@@ -93,6 +185,7 @@ Pop-Location
 Write-Host ""
 Write-Host "[SUCCESS] Build completed successfully!" -ForegroundColor Green
 Write-Host ""
+Write-Host "[VERSION] Package version: $FullVersion" -ForegroundColor Cyan
 Write-Host "[INFO] Artifacts created in: $ArtifactsPath" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Contents:" -ForegroundColor White

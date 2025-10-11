@@ -1,0 +1,51 @@
+name: Build and Package
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-and-package:
+    runs-on: windows-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0  # Required for build number calculation
+    
+    - name: Install .NET Core
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: 9.0.x
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v5
+      with:
+        node-version: '24'
+    
+    # Run the build script which handles building, testing, versioning, and packaging
+    - name: Build, test, and package
+      run: .\scripts\build-cli.ps1
+    
+    # Upload artifacts
+    - name: Upload test results
+      if: ${{ !cancelled() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: artifacts/TestResults/*.trx
+    
+    - name: Upload CLI binaries
+      uses: actions/upload-artifact@v4
+      with:
+        name: cli-binaries
+        path: artifacts/cli/
+    
+    - name: Upload npm package
+      uses: actions/upload-artifact@v4
+      with:
+        name: npm-package
+        path: artifacts/*.tgz
