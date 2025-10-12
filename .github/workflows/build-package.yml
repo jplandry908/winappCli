@@ -7,6 +7,9 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
 
+permissions:
+  contents: write  # Required for creating releases
+
 jobs:
   build-and-package:
     runs-on: windows-latest
@@ -28,7 +31,20 @@ jobs:
     
     # Run the build script which handles building, testing, versioning, npm packaging, and MSIX bundling
     - name: Build, test, and package
-      run: .\scripts\build-cli.ps1
+      id: build
+      run: |
+        .\scripts\build-cli.ps1
+        
+        # Get version information for release tagging
+        $versionJson = Get-Content "version.json" | ConvertFrom-Json
+        $baseVersion = $versionJson.version
+        $buildNumber = & ".\scripts\get-build-number.ps1"
+        $fullVersion = "$baseVersion-build.$buildNumber"
+        
+        # Export for use in subsequent steps
+        echo "version=$fullVersion" >> $env:GITHUB_OUTPUT
+        echo "base_version=$baseVersion" >> $env:GITHUB_OUTPUT
+        echo "build_number=$buildNumber" >> $env:GITHUB_OUTPUT
     
     # Upload all build artifacts
     - name: Upload test results
@@ -61,3 +77,50 @@ jobs:
       with:
         name: msix-layout
         path: artifacts/msix-layout/
+    
+    # Prepare release assets (only on push to main)
+    - name: Prepare Release Assets
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: |
+        # Create a zip of the MSIX bundle distribution folder
+        Compress-Archive -Path "artifacts\msix-bundle\*" -DestinationPath "artifacts\msix-bundle.zip" -Force
+        Write-Host "Created msix-bundle.zip"
+    
+    # Create GitHub pre-release (only on push to main)
+    - name: Create Pre-Release
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v${{ steps.build.outputs.version }}
+        name: Pre-release v${{ steps.build.outputs.version }}
+        prerelease: true
+        generate_release_notes: true
+        body: |
+          🚀 **Automated Pre-release Build**
+          
+          Version: `${{ steps.build.outputs.version }}`
+          Base Version: `${{ steps.build.outputs.base_version }}`
+          Build Number: `${{ steps.build.outputs.build_number }}`
+          Commit: `${{ github.sha }}`
+          
+          ## Installation
+          
+          ### Windows MSIX Bundle
+          1. Download `msix-bundle.zip`
+          2. Extract the archive
+          3. Double-click `install.cmd`
+          4. Allow elevation when prompted
+          
+          ### NPM Package
+          ```bash
+          npm install @microsoft/winsdk-${{ steps.build.outputs.version }}.tgz
+          ```
+          
+          ## What's Included
+          - ✅ x64 and ARM64 Windows binaries
+          - ✅ Self-signed development certificate
+          - ✅ Automated installer script
+          - ✅ NPM package for Node.js integration
+        files: |
+          artifacts/msix-bundle.zip
+          artifacts/*.tgz

@@ -1,27 +1,16 @@
-# MSIX Bundle Installation
+# Windows Development CLI MSIX Installation
 
-This package contains a pre-release development build of the Windows Development CLI MSIX bundle.
+This package contains a pre-release development build of the Windows Development CLI MSIX bundle. 
+
+> **Note:** The MSIX bundle is signed with a dev certificate. This is temporary until we can sign with a proper certificate. Installing via the `install.cmd` script will install the dev certificate on your machine.
 
 ## Quick Installation
 
-Choose the easiest method for you:
-
-**Option A - Double-Click (Easiest):**
 1. Double-click `install.cmd`
 2. When prompted, allow elevation to Administrator
-3. Done! The installer handles everything automatically
+3. Done! 
 
-**Option B - Right-Click Menu:**
-1. Right-click on `install.ps1`
-2. Select "Run with PowerShell"
-3. When prompted, allow elevation to Administrator
-
-**Option C - From PowerShell:**
-1. Open PowerShell
-2. Navigate to this folder
-3. Run: `.\install.ps1`
-
-> **Note:** The installer automatically unblocks downloaded files and handles certificate installation, so no manual steps are needed!
+> **Note:** When downloading scripts from the internet, Windows blocks execution until they are unblocked. The `instal.cmd` should automatically unblock downloaded files. However, if that fails, you will need to right click on each file -> click Properties -> check Unblock -> click OK.
 
 ## What's Included
 
@@ -37,9 +26,7 @@ Choose the easiest method for you:
 ## Troubleshooting
 
 ### "Cannot be loaded because running scripts is disabled"
-If you see a script execution error, you have two options:
-1. **Right-click** on `install.ps1` → Select **"Run with PowerShell"** (bypasses execution policy)
-2. Or manually unblock: Right-click `install.ps1` → Properties → Check "Unblock" → OK
+If you see a script execution error, Right-click `install.ps1` → Properties → Check "Unblock" → OK
 
 ### "Windows cannot install this package"
 - Make sure you ran `install.ps1` with administrator privileges

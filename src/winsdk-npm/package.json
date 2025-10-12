@@ -1,5 +1,5 @@
 {
-  "name": "windows-sdk",
+  "name": "@microsoft/winsdk",
   "version": "1.0.0",
   "description": "Windows SDK and BuildTools utilities for Node.js native addon development",
   "main": "index.js",
