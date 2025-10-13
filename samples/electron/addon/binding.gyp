@@ -1,8 +1,8 @@
 {
   "targets": [
     {
-      "target_name": "native",
-      "sources": ["native.cc"],
+      "target_name": "addon",
+      "sources": ["addon.cc"],
       "include_dirs": [
         "<!@(node -p \"require('node-addon-api').include\")",
         "<!(node -e \"require('nan')\")",
