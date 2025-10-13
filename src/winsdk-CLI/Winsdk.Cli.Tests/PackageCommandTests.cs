@@ -1,4 +1,3 @@
-using Winsdk.Cli.Commands;
 using Winsdk.Cli.Services;
 
 namespace Winsdk.Cli.Tests;
@@ -11,6 +10,32 @@ public class PackageCommandTests : BaseCommandTests
     private IConfigService _configService = null!;
     private IBuildToolsService _buildToolsService = null!;
     private IMsixService _msixService = null!;
+
+    /// <summary>
+    /// Standard test manifest content for use across multiple tests
+    /// </summary>
+    private const string StandardTestManifestContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Package xmlns=""http://schemas.microsoft.com/appx/manifest/foundation/windows10""
+         xmlns:uap=""http://schemas.microsoft.com/appx/manifest/uap/windows10"">
+  <Identity Name=""TestPackage""
+            Publisher=""CN=TestPublisher""
+            Version=""1.0.0.0"" />
+  <Properties>
+    <DisplayName>Test Package</DisplayName>
+    <PublisherDisplayName>Test Publisher</PublisherDisplayName>
+    <Description>Test package for integration testing</Description>
+    <Logo>Assets\Logo.png</Logo>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name=""Windows.Universal"" MinVersion=""10.0.18362.0"" MaxVersionTested=""10.0.26100.0"" />
+  </Dependencies>
+  <Applications>
+    <Application Id=""TestApp"" Executable=""TestApp.exe"" EntryPoint=""TestApp.App"">
+      <uap:VisualElements DisplayName=""Test App"" Description=""Test application""
+                          BackgroundColor=""#777777"" Square150x150Logo=""Assets\Logo.png"" Square44x44Logo=""Assets\Logo.png"" />
+    </Application>
+  </Applications>
+</Package>";
 
     [TestInitialize]
     public void Setup()
@@ -29,7 +54,7 @@ public class PackageCommandTests : BaseCommandTests
 
         var directoryService = GetRequiredService<IWinsdkDirectoryService>();
         directoryService.SetCacheDirectoryForTesting(_testWinsdkDirectory);
-        
+
         _buildToolsService = GetRequiredService<IBuildToolsService>();
         _msixService = GetRequiredService<IMsixService>();
     }
@@ -58,30 +83,8 @@ public class PackageCommandTests : BaseCommandTests
     {
         Directory.CreateDirectory(packageDir);
 
-        // Create a basic AppxManifest.xml
-        var manifestContent = @"<?xml version=""1.0"" encoding=""utf-8""?>
-<Package xmlns=""http://schemas.microsoft.com/appx/manifest/foundation/windows10""
-         xmlns:uap=""http://schemas.microsoft.com/appx/manifest/uap/windows10"">
-  <Identity Name=""TestPackage""
-            Publisher=""CN=TestPublisher""
-            Version=""1.0.0.0"" />
-  <Properties>
-    <DisplayName>Test Package</DisplayName>
-    <PublisherDisplayName>Test Publisher</PublisherDisplayName>
-    <Description>Test package for integration testing</Description>
-  </Properties>
-  <Dependencies>
-    <TargetDeviceFamily Name=""Windows.Universal"" MinVersion=""10.0.0.0"" MaxVersionTested=""10.0.0.0"" />
-  </Dependencies>
-  <Applications>
-    <Application Id=""TestApp"" Executable=""TestApp.exe"" EntryPoint=""TestApp.App"">
-      <uap:VisualElements DisplayName=""Test App"" Description=""Test application""
-                          BackgroundColor=""#777777"" Square150x150Logo=""Assets\Logo.png"" />
-    </Application>
-  </Applications>
-</Package>";
-
-        File.WriteAllText(Path.Combine(packageDir, "AppxManifest.xml"), manifestContent);
+        // Use the shared standard test manifest content
+        File.WriteAllText(Path.Combine(packageDir, "AppxManifest.xml"), StandardTestManifestContent);
 
         // Create Assets directory and a fake logo
         var assetsDir = Path.Combine(packageDir, "Assets");
@@ -92,107 +95,33 @@ public class PackageCommandTests : BaseCommandTests
         File.WriteAllText(Path.Combine(packageDir, "TestApp.exe"), "fake exe content");
     }
 
-    [TestMethod]
-    public async Task PackageCommand_WithBuildToolsPreInstalled_RunsSuccessfully()
+    /// <summary>
+    /// Creates external test manifest content with different identity for external manifest tests
+    /// </summary>
+    private static string CreateExternalTestManifest()
     {
-        // Arrange - Pre-install BuildTools by ensuring they exist
-        try
-        {
-            var buildToolsPath = await _buildToolsService.EnsureBuildToolsAsync(quiet: true);
-            if (buildToolsPath == null)
-            {
-                Assert.Inconclusive("Cannot run test - BuildTools installation failed. This may be expected in some test environments.");
-                return;
-            }
-
-            // Verify makeappx.exe is available
-            var makeappxPath = _buildToolsService.GetBuildToolPath("makeappx.exe");
-            if (makeappxPath == null)
-            {
-                Assert.Inconclusive("Cannot run test - makeappx.exe not found in BuildTools installation.");
-                return;
-            }
-
-            // Create test package structure
-            var packageDir = Path.Combine(_tempDirectory, "TestPackage");
-            CreateTestPackageStructure(packageDir);
-
-            // Act - Run makeappx.exe to verify it works with pre-installed BuildTools
-            var outputPath = Path.Combine(_tempDirectory, "TestPackage.msix");
-            var arguments = $"pack /o /d \"{packageDir}\" /p \"{outputPath}\"";
-
-            var (stdout, stderr) = await _buildToolsService.RunBuildToolAsync("makeappx.exe", arguments, verbose: false, quiet: true);
-
-            // Assert - Command should succeed
-            Assert.IsNotNull(stdout, "makeappx.exe should produce output");
-            
-            // The command might fail due to missing signing or other requirements in test environment,
-            // but the important thing is that the tool was found and executed
-            Console.WriteLine($"makeappx output: {stdout}");
-            if (!string.IsNullOrEmpty(stderr))
-            {
-                Console.WriteLine($"makeappx stderr: {stderr}");
-            }
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("execution failed"))
-        {
-            // This is acceptable - the tool ran but failed due to test environment limitations
-            // The important thing is that BuildTools were found and the tool was executed
-            Console.WriteLine($"Tool execution failed as expected in test environment: {ex.Message}");
-        }
-        catch (FileNotFoundException)
-        {
-            Assert.Fail("BuildTools should have been pre-installed but makeappx.exe was not found");
-        }
-    }
-
-    [TestMethod]
-    public async Task PackageCommand_WithoutBuildToolsPreInstalled_AutoInstallsAndRuns()
-    {
-        // Arrange - Start with a clean test environment (no pre-installed BuildTools)
-        // The test environment should be isolated and not have BuildTools initially
-
-        // Create test package structure
-        var packageDir = Path.Combine(_tempDirectory, "TestPackage");
-        CreateTestPackageStructure(packageDir);
-
-        try
-        {
-            // Act - Use EnsureBuildToolAvailableAsync which should auto-install if needed
-            var makeappxPath = await _buildToolsService.EnsureBuildToolAvailableAsync("makeappx.exe", quiet: true);
-            
-            // Verify we got a valid path
-            Assert.IsNotNull(makeappxPath, "EnsureBuildToolAvailableAsync should return a valid path");
-            Assert.IsTrue(File.Exists(makeappxPath), "The returned makeappx.exe path should exist");
-
-            // Act - Run makeappx.exe to verify it works after auto-installation
-            var outputPath = Path.Combine(_tempDirectory, "TestPackage.msix");
-            var arguments = $"pack /o /d \"{packageDir}\" /p \"{outputPath}\"";
-
-            var (stdout, stderr) = await _buildToolsService.RunBuildToolAsync("makeappx.exe", arguments, verbose: false, quiet: true);
-
-            // Assert - Command should have executed (even if it fails due to test environment)
-            Assert.IsNotNull(stdout, "makeappx.exe should produce output after auto-installation");
-            
-            Console.WriteLine($"makeappx output after auto-install: {stdout}");
-            if (!string.IsNullOrEmpty(stderr))
-            {
-                Console.WriteLine($"makeappx stderr after auto-install: {stderr}");
-            }
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("execution failed"))
-        {
-            // This is acceptable - the tool ran but failed due to test environment limitations
-            Console.WriteLine($"Tool execution failed as expected in test environment: {ex.Message}");
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("Could not install"))
-        {
-            Assert.Inconclusive($"Cannot complete test - BuildTools auto-installation failed: {ex.Message}. This may be expected in some test environments.");
-        }
-        catch (FileNotFoundException ex)
-        {
-            Assert.Inconclusive($"Cannot complete test - Tool not found after auto-installation: {ex.Message}. This may be expected in some test environments.");
-        }
+        return @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Package xmlns=""http://schemas.microsoft.com/appx/manifest/foundation/windows10""
+         xmlns:uap=""http://schemas.microsoft.com/appx/manifest/uap/windows10"">
+  <Identity Name=""ExternalTestPackage""
+            Publisher=""CN=ExternalTestPublisher""
+            Version=""1.0.0.0"" />
+  <Properties>
+    <DisplayName>External Test Package</DisplayName>
+    <PublisherDisplayName>External Test Publisher</PublisherDisplayName>
+    <Description>Test package with external manifest</Description>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name=""Windows.Universal"" MinVersion=""10.0.18362.0"" MaxVersionTested=""10.0.26100.0"" />
+  </Dependencies>
+  <Applications>
+    <Application Id=""ExternalTestApp"" Executable=""TestApp.exe"" EntryPoint=""ExternalTestApp.App"">
+      <uap:VisualElements DisplayName=""External Test App"" Description=""Test application with external manifest""
+                          BackgroundColor=""#333333"" Square150x150Logo=""Assets\Logo.png"" Square44x44Logo=""Assets\Logo.png"" />
+    </Application>
+  </Applications>
+</Package>";
     }
 
     [TestMethod]
@@ -203,41 +132,175 @@ public class PackageCommandTests : BaseCommandTests
         var foundTools = new List<string>();
         var missingTools = new List<string>();
 
-        try
+        // Ensure BuildTools are installed
+        var buildToolsPath = await _buildToolsService.EnsureBuildToolsAsync(quiet: true);
+        if (buildToolsPath == null)
         {
-            // Ensure BuildTools are installed
-            var buildToolsPath = await _buildToolsService.EnsureBuildToolsAsync(quiet: true);
-            if (buildToolsPath == null)
-            {
-                Assert.Inconclusive("Cannot run test - BuildTools installation failed.");
-                return;
-            }
-
-            // Check each common tool
-            foreach (var tool in commonTools)
-            {
-                var toolPath = _buildToolsService.GetBuildToolPath(tool);
-                if (toolPath != null)
-                {
-                    foundTools.Add(tool);
-                    Console.WriteLine($"Found {tool} at: {toolPath}");
-                }
-                else
-                {
-                    missingTools.Add(tool);
-                    Console.WriteLine($"Missing: {tool}");
-                }
-            }
-
-            // Assert - We should find at least some of the common tools
-            Assert.IsNotEmpty(foundTools, $"Should find at least some common build tools. Found: [{string.Join(", ", foundTools)}], Missing: [{string.Join(", ", missingTools)}]");
-            
-            // Specifically check for makeappx since it's commonly used
-            Assert.Contains("makeappx.exe", foundTools, "makeappx.exe should be available in BuildTools");
+            Assert.Fail("Cannot run test - BuildTools installation failed.");
+            return;
         }
-        catch (InvalidOperationException)
+
+        // Check each common tool
+        foreach (var tool in commonTools)
         {
-            Assert.Inconclusive("Cannot complete test - BuildTools installation failed. This may be expected in some test environments.");
+            var toolPath = _buildToolsService.GetBuildToolPath(tool);
+            if (toolPath != null)
+            {
+                foundTools.Add(tool);
+                Console.WriteLine($"Found {tool} at: {toolPath}");
+            }
+            else
+            {
+                missingTools.Add(tool);
+                Console.WriteLine($"Missing: {tool}");
+            }
         }
+
+        // Assert - We should find at least some of the common tools
+        Assert.IsNotEmpty(foundTools, $"Should find at least some common build tools. Found: [{string.Join(", ", foundTools)}], Missing: [{string.Join(", ", missingTools)}]");
+
+        // Specifically check for makeappx since it's commonly used
+        Assert.Contains("makeappx.exe", foundTools, "makeappx.exe should be available in BuildTools");
+    }
+
+    [TestMethod]
+    [DataRow(null, @"TestPackage.msix", DisplayName = "Null output path defaults to current directory with package name")]
+    [DataRow("", @"TestPackage.msix", DisplayName = "Empty output path defaults to current directory with package name")]
+    [DataRow("CustomPackage.msix", @"CustomPackage.msix", DisplayName = "Full filename with .msix extension uses as-is")]
+    [DataRow("output", @"output\TestPackage.msix", DisplayName = "Directory path without .msix extension combines with package name")]
+    [DataRow(@"C:\temp\output", @"C:\temp\output\TestPackage.msix", DisplayName = "Absolute directory path combines with package name")]
+    [DataRow(@"C:\temp\AbsolutePackage.msix", @"C:\temp\AbsolutePackage.msix", DisplayName = "Absolute .msix file path uses as-is")]
+    public async Task CreateMsixPackageAsync_OutputPathHandling_WorksCorrectly(string? outputPath, string expectedRelativePath)
+    {
+        // Arrange
+        var packageDir = Path.Combine(_tempDirectory, "TestPackage");
+        CreateTestPackageStructure(packageDir);
+
+        // Create a minimal winsdk.yaml to satisfy config requirements
+        await File.WriteAllTextAsync(_configService.ConfigPath, "packages: []");
+
+        // Convert expected relative path to absolute path based on current directory
+        string expectedMsixPath;
+        if (Path.IsPathRooted(expectedRelativePath))
+        {
+            // Already absolute - use as-is
+            expectedMsixPath = expectedRelativePath;
+        }
+        else
+        {
+            // Relative - make absolute based on current directory
+            expectedMsixPath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), expectedRelativePath));
+        }
+
+        var result = await _msixService.CreateMsixPackageAsync(
+            inputFolder: packageDir,
+            outputPath: outputPath,
+            packageName: "TestPackage",
+            skipPri: true,
+            autoSign: false,
+            verbose: true,
+            cancellationToken: CancellationToken.None
+        );
+
+        // If we get here without exception, verify the path is correct
+        Assert.AreEqual(expectedMsixPath, result.MsixPath,
+            $"Output path calculation incorrect. Input: '{outputPath}', Expected: '{expectedMsixPath}', Actual: '{result.MsixPath}'");
+    }
+
+    [TestMethod]
+    public async Task CreateMsixPackageAsync_InvalidInputFolder_ThrowsDirectoryNotFoundException()
+    {
+        // Arrange - Use non-existent directory
+        var nonExistentDir = Path.Combine(_tempDirectory, "NonExistentPackage");
+
+        // Act & Assert
+        await Assert.ThrowsExactlyAsync<DirectoryNotFoundException>(async () =>
+        {
+            await _msixService.CreateMsixPackageAsync(
+                inputFolder: nonExistentDir,
+                outputPath: null,
+                packageName: "TestPackage",
+                skipPri: true,
+                autoSign: false,
+                verbose: false,
+                cancellationToken: CancellationToken.None
+            );
+        }, "Expected DirectoryNotFoundException when input folder does not exist.");
+    }
+
+    [TestMethod]
+    public async Task CreateMsixPackageAsync_MissingManifest_ThrowsFileNotFoundException()
+    {
+        // Arrange - Create directory without manifest
+        var packageDir = Path.Combine(_tempDirectory, "TestPackageNoManifest");
+        Directory.CreateDirectory(packageDir);
+
+        // Create a fake executable but no manifest
+        File.WriteAllText(Path.Combine(packageDir, "TestApp.exe"), "fake exe content");
+
+        // Act & Assert
+        await Assert.ThrowsExactlyAsync<FileNotFoundException>(async () =>
+        {
+            await _msixService.CreateMsixPackageAsync(
+                inputFolder: packageDir,
+                outputPath: null,
+                packageName: "TestPackage",
+                skipPri: true,
+                autoSign: false,
+                verbose: false,
+                cancellationToken: CancellationToken.None
+            );
+        }, "Expected FileNotFoundException when manifest file is missing.");
+    }
+
+    [TestMethod]
+    public async Task CreateMsixPackageAsync_ExternalManifestWithAssets_CopiesManifestAndAssets()
+    {
+        // Arrange - Create input folder without manifest
+        var packageDir = Path.Combine(_tempDirectory, "InputPackage");
+        Directory.CreateDirectory(packageDir);
+        
+        // Create the executable in the input folder
+        File.WriteAllText(Path.Combine(packageDir, "TestApp.exe"), "fake exe content");
+
+        // Create external manifest directory with manifest and assets
+        var externalManifestDir = Path.Combine(_tempDirectory, "ExternalManifest");
+        Directory.CreateDirectory(externalManifestDir);
+        
+        // Create assets directory in external location
+        var externalAssetsDir = Path.Combine(externalManifestDir, "Assets");
+        Directory.CreateDirectory(externalAssetsDir);
+        
+        // Create asset files
+        File.WriteAllText(Path.Combine(externalAssetsDir, "Logo.png"), "external logo content");
+        File.WriteAllText(Path.Combine(externalAssetsDir, "StoreLogo.png"), "external store logo content");
+        
+        // Create external manifest that references the assets
+        var externalManifestPath = Path.Combine(externalManifestDir, "AppxManifest.xml");
+        await File.WriteAllTextAsync(externalManifestPath, CreateExternalTestManifest());
+
+        // Create minimal winsdk.yaml
+        await File.WriteAllTextAsync(_configService.ConfigPath, "packages: []");
+
+        var result = await _msixService.CreateMsixPackageAsync(
+            inputFolder: packageDir,
+            outputPath: null,
+            packageName: "ExternalTestPackage",
+            skipPri: true,
+            autoSign: false,
+            manifestPath: externalManifestPath,
+            verbose: true,
+            cancellationToken: CancellationToken.None
+        );
+
+        // If successful, verify the package was created correctly
+        Assert.IsNotNull(result, "Result should not be null");
+        Assert.Contains("ExternalTestPackage", result.MsixPath, "Package name should reflect external manifest");
+        
+        // Verify that assets were accessible during processing
+        // The external manifest and assets should still exist
+        Assert.IsTrue(File.Exists(externalManifestPath), "External manifest should still exist");
+        Assert.IsTrue(File.Exists(Path.Combine(externalAssetsDir, "Logo.png")), "External Logo.png should still exist");
+        Assert.IsTrue(File.Exists(Path.Combine(externalAssetsDir, "StoreLogo.png")), "External StoreLogo.png should still exist");
     }
 }
