@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.CommandLine;
 using System.CommandLine.Invocation;
 using Winsdk.Cli.Services;
@@ -81,7 +82,7 @@ internal class ManifestGenerateCommand : Command
         Options.Add(YesOption);
     }
 
-    public class Handler(IManifestService manifestService) : AsynchronousCommandLineAction
+    public class Handler(IManifestService manifestService, ILogger<ManifestGenerateCommand> logger) : AsynchronousCommandLineAction
     {
         public override async Task<int> InvokeAsync(ParseResult parseResult, CancellationToken cancellationToken = default)
         {
@@ -94,8 +95,6 @@ internal class ManifestGenerateCommand : Command
             var sparse = parseResult.GetValue(SparseOption);
             var logoPath = parseResult.GetValue(LogoPathOption);
             var yes = parseResult.GetValue(YesOption);
-            var verbose = parseResult.GetValue(WinSdkRootCommand.VerboseOption);
-
             try
             {
                 await manifestService.GenerateManifestAsync(
@@ -108,20 +107,16 @@ internal class ManifestGenerateCommand : Command
                     sparse,
                     logoPath,
                     yes,
-                    verbose,
                     cancellationToken);
 
-                Console.WriteLine($"Manifest generated successfully in: {directory}");
+                logger.LogInformation("Manifest generated successfully in: {Directory}", directory);
 
                 return 0;
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"❌ Error generating manifest: {ex.Message}");
-                if (verbose)
-                {
-                    Console.Error.WriteLine(ex.StackTrace);
-                }
+                logger.LogError("❌ Error generating manifest: {ErrorMessage}", ex.Message);
+                logger.LogDebug("Stack Trace: {StackTrace}", ex.StackTrace);
                 return 1;
             }
         }

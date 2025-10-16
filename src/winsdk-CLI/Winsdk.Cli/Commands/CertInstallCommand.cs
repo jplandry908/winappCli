@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.CommandLine;
 using System.CommandLine.Invocation;
 using Winsdk.Cli.Services;
@@ -36,32 +37,31 @@ internal class CertInstallCommand : Command
         Options.Add(ForceOption);
     }
 
-    public class Handler(ICertificateService certificateService) : AsynchronousCommandLineAction
+    public class Handler(ICertificateService certificateService, ILogger<CertInstallCommand> logger) : AsynchronousCommandLineAction
     {
         public override async Task<int> InvokeAsync(ParseResult parseResult, CancellationToken cancellationToken = default)
         {
             var certPath = parseResult.GetRequiredValue(CertPathArgument);
             var password = parseResult.GetRequiredValue(PasswordOption);
             var force = parseResult.GetRequiredValue(ForceOption);
-            var verbose = parseResult.GetValue(WinSdkRootCommand.VerboseOption);
 
             try
             {
-                var result = await certificateService.InstallCertificateAsync(certPath, password, force, verbose, cancellationToken);
+                var result = await certificateService.InstallCertificateAsync(certPath, password, force, cancellationToken);
                 if (!result)
                 {
-                    Console.WriteLine($"ℹ️ Certificate is already installed");
+                    logger.LogInformation("ℹ️ Certificate is already installed");
                 }
                 else
                 {
-                    Console.WriteLine($"✅ Certificate installed successfully!");
+                    logger.LogInformation("✅ Certificate installed successfully!");
                 }
 
                 return 0;
             }
             catch (Exception error)
             {
-                Console.Error.WriteLine($"❌ Failed to install certificate: {error.Message}");
+                logger.LogError("❌ Failed to install certificate: {ErrorMessage}", error.Message);
                 return 1;
             }
         }

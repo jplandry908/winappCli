@@ -10,7 +10,7 @@
     <AnalysisMode>Recommended</AnalysisMode>
     
     <!-- Suppress specific warnings -->
-    <NoWarn>CA1822;CA1852;CA1707</NoWarn>
+    <NoWarn>CA1822;CA1852;CA1707;IDE1006</NoWarn>
     
     <!-- Test discovery and execution -->
     <IsPackable>false</IsPackable>
@@ -19,12 +19,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Winsdk.Cli\Winsdk.Cli.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- Test-specific packages -->
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.10" />
-    <PackageReference Include="System.CommandLine" Version="2.0.0-rc.2.25502.107" />
   </ItemGroup>
 
 </Project>

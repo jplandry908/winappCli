@@ -6,6 +6,5 @@ internal interface IPowerShellService
         string command,
         bool elevated = false,
         Dictionary<string, string>? environmentVariables = null,
-        bool verbose = false,
         CancellationToken cancellationToken = default);
 }

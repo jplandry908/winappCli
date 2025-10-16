@@ -11,7 +11,6 @@ internal class InitCommand : Command
     public static Option<bool> PrereleaseOption { get; }
     public static Option<bool> IgnoreConfigOption { get; }
     public static Option<bool> NoGitignoreOption { get; }
-    public static Option<bool> QuietOption { get; }
     public static Option<bool> YesOption { get; }
     public static Option<bool> NoCertOption { get; }
     public static Option<bool> ConfigOnlyOption { get; }
@@ -40,10 +39,6 @@ internal class InitCommand : Command
         {
             Description = "Don't update .gitignore file"
         };
-        QuietOption = new Option<bool>("--quiet", "-q")
-        {
-            Description = "Suppress progress messages"
-        };
         YesOption = new Option<bool>("--yes", "--no-prompt")
         {
             Description = "Assume yes to all prompts"
@@ -65,7 +60,6 @@ internal class InitCommand : Command
         Options.Add(PrereleaseOption);
         Options.Add(IgnoreConfigOption);
         Options.Add(NoGitignoreOption);
-        Options.Add(QuietOption);
         Options.Add(YesOption);
         Options.Add(NoCertOption);
         Options.Add(ConfigOnlyOption);
@@ -80,24 +74,14 @@ internal class InitCommand : Command
             var prerelease = parseResult.GetValue(PrereleaseOption);
             var ignoreConfig = parseResult.GetValue(IgnoreConfigOption);
             var noGitignore = parseResult.GetValue(NoGitignoreOption);
-            var quiet = parseResult.GetValue(QuietOption);
             var assumeYes = parseResult.GetValue(YesOption);
             var noCert = parseResult.GetValue(NoCertOption);
             var configOnly = parseResult.GetValue(ConfigOnlyOption);
-            var verbose = parseResult.GetValue(WinSdkRootCommand.VerboseOption);
-
-            if (quiet && verbose)
-            {
-                Console.Error.WriteLine($"Cannot specify both --quiet and --verbose options together.");
-                return 1;
-            }
 
             var options = new WorkspaceSetupOptions
             {
                 BaseDirectory = baseDirectory ?? Directory.GetCurrentDirectory(),
                 ConfigDir = configDir,
-                Quiet = quiet,
-                Verbose = verbose,
                 IncludeExperimental = prerelease,
                 IgnoreConfig = ignoreConfig,
                 NoGitignore = noGitignore,

@@ -1,20 +1,25 @@
+using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Text;
 
 namespace Winsdk.Cli.Services;
 
-internal sealed class CppWinrtService : ICppWinrtService
+internal sealed class CppWinrtService(ILogger<CppWinrtService> logger) : ICppWinrtService
 {
     public string? FindCppWinrtExe(string packagesDir, IDictionary<string, string> usedVersions)
     {
         var pkgName = "Microsoft.Windows.CppWinRT";
-        if (!usedVersions.TryGetValue(pkgName, out var v)) return null;
+        if (!usedVersions.TryGetValue(pkgName, out var v))
+        {
+            return null;
+        }
+
         var baseDir = Path.Combine(packagesDir, $"{pkgName}.{v}");
         var exe = Path.Combine(baseDir, "bin", "cppwinrt.exe");
         return File.Exists(exe) ? exe : null;
     }
 
-    public async Task RunWithRspAsync(string cppwinrtExe, IEnumerable<string> winmdInputs, string outputDir, string workingDirectory, bool verbose, CancellationToken cancellationToken = default)
+    public async Task RunWithRspAsync(string cppwinrtExe, IEnumerable<string> winmdInputs, string outputDir, string workingDirectory, CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(outputDir);
         var rspPath = Path.Combine(outputDir, ".cppwinrt.rsp");
@@ -27,14 +32,14 @@ internal sealed class CppWinrtService : ICppWinrtService
         }
         sb.AppendLine("-optimize");
         sb.AppendLine($"-output \"{outputDir}\"");
-        if (verbose) sb.AppendLine("-verbose");
+        if (logger.IsEnabled(LogLevel.Debug))
+        {
+            sb.AppendLine("-verbose");
+        }
 
         await File.WriteAllTextAsync(rspPath, sb.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), cancellationToken);
 
-        if (verbose)
-        {
-            Console.WriteLine($"cppwinrt: {cppwinrtExe} @{rspPath}");
-        }
+        logger.LogDebug("cppwinrt: {CppWinrtExe} @{RspPath}", cppwinrtExe, rspPath);
 
         var psi = new ProcessStartInfo
         {
@@ -48,14 +53,18 @@ internal sealed class CppWinrtService : ICppWinrtService
         };
 
         using var p = Process.Start(psi)!;
-        var so = await p.StandardOutput.ReadToEndAsync(cancellationToken);
-        var se = await p.StandardError.ReadToEndAsync(cancellationToken);
+        var stdout = await p.StandardOutput.ReadToEndAsync(cancellationToken);
+        var stderr = await p.StandardError.ReadToEndAsync(cancellationToken);
         await p.WaitForExitAsync(cancellationToken);
 
-        if (verbose)
+        if (!string.IsNullOrWhiteSpace(stdout))
         {
-            if (!string.IsNullOrWhiteSpace(so)) Console.WriteLine(so);
-            if (!string.IsNullOrWhiteSpace(se)) Console.WriteLine(se);
+            logger.LogDebug("{StdOut}", stdout);
+        }
+
+        if (!string.IsNullOrWhiteSpace(stderr))
+        {
+            logger.LogDebug("{StdErr}", stderr);
         }
 
         if (p.ExitCode != 0)

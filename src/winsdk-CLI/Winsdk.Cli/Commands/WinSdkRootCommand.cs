@@ -9,6 +9,11 @@ internal class WinSdkRootCommand : RootCommand
         Description = "Enable verbose output"
     };
 
+    internal static Option<bool> QuietOption = new Option<bool>("--quiet", "-q")
+    {
+        Description = "Suppress progress messages"
+    };
+
     public WinSdkRootCommand(
         InitCommand initCommand,
         RestoreCommand restoreCommand,

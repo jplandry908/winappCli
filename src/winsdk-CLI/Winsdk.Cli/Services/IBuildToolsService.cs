@@ -16,13 +16,12 @@ internal interface IBuildToolsService
     /// This method guarantees a tool path will be returned or an exception will be thrown.
     /// </summary>
     /// <param name="toolName">Name of the tool (e.g., 'mt.exe', 'signtool.exe')</param>  
-    /// <param name="quiet">Suppress progress messages during auto-installation</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Full path to the executable</returns>
     /// <exception cref="FileNotFoundException">Tool not found even after installation</exception>
     /// <exception cref="InvalidOperationException">BuildTools installation failed</exception>
-    Task<string> EnsureBuildToolAvailableAsync(string toolName, bool quiet = false, CancellationToken cancellationToken = default);
+    Task<string> EnsureBuildToolAvailableAsync(string toolName, CancellationToken cancellationToken = default);
 
-    Task<string?> EnsureBuildToolsAsync(bool quiet = false, bool forceLatest = false, CancellationToken cancellationToken = default);
-    Task<(string stdout, string stderr)> RunBuildToolAsync(string toolName, string arguments, bool verbose = false, bool quiet = false, CancellationToken cancellationToken = default);
+    Task<string?> EnsureBuildToolsAsync(bool forceLatest = false, CancellationToken cancellationToken = default);
+    Task<(string stdout, string stderr)> RunBuildToolAsync(string toolName, string arguments, CancellationToken cancellationToken = default);
 }

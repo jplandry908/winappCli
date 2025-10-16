@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 
 namespace Winsdk.Cli.Services;
@@ -5,7 +6,7 @@ namespace Winsdk.Cli.Services;
 /// <summary>
 /// Service for executing PowerShell commands
 /// </summary>
-internal class PowerShellService : IPowerShellService
+internal class PowerShellService(ILogger<PowerShellService> logger) : IPowerShellService
 {
     /// <summary>
     /// Runs a PowerShell command and returns the exit code and output
@@ -13,24 +14,19 @@ internal class PowerShellService : IPowerShellService
     /// <param name="command">The PowerShell command to run</param>
     /// <param name="elevated">Whether to run with elevated privileges (UAC prompt)</param>
     /// <param name="environmentVariables">Optional dictionary of environment variables to set/override</param>
-    /// <param name="verbose">Enable verbose logging</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Tuple containing (exitCode, stdout)</returns>
     public async Task<(int exitCode, string output)> RunCommandAsync(
         string command,
         bool elevated = false,
         Dictionary<string, string>? environmentVariables = null,
-        bool verbose = false,
         CancellationToken cancellationToken = default)
     {
-        if (verbose)
+        var elevatedText = elevated ? "elevated " : "";
+        logger.LogDebug("Running {Elevated}PowerShell: {Command}", elevatedText, command);
+        if (elevated)
         {
-            var elevatedText = elevated ? "elevated " : "";
-            Console.WriteLine($"Running {elevatedText}PowerShell: {command}");
-            if (elevated)
-            {
-                Console.WriteLine("UAC prompt may appear...");
-            }
+            logger.LogDebug("UAC prompt may appear...");
         }
 
         // Build a safe, profile-less, non-interactive PowerShell invocation
@@ -103,16 +99,13 @@ internal class PowerShellService : IPowerShellService
 
         await process.WaitForExitAsync(cancellationToken);
 
-        if (verbose)
+        if (process.ExitCode != 0 && !string.IsNullOrWhiteSpace(stdErr))
         {
-            if (process.ExitCode != 0 && !string.IsNullOrWhiteSpace(stdErr))
-            {
-                Console.WriteLine($"PowerShell error: {stdErr}");
-            }
-            else if (!string.IsNullOrWhiteSpace(stdOut))
-            {
-                Console.WriteLine($"PowerShell output: {stdOut.Trim()}");
-            }
+            logger.LogDebug("PowerShell error: {StdErr}", stdErr);
+        }
+        else if (!string.IsNullOrWhiteSpace(stdOut))
+        {
+            logger.LogDebug("PowerShell output: {StdOut}", stdOut.Trim());
         }
 
         // For elevated commands, exit codes may not be reliable, so we return 0 if no exception occurred

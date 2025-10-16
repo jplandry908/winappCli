@@ -10,7 +10,13 @@ internal sealed class WinsdkConfig
     public void SetVersion(string name, string version)
     {
         var existing = Packages.FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-        if (existing is null) Packages.Add(new PackagePin { Name = name, Version = version });
-        else existing.Version = version;
+        if (existing is null)
+        {
+            Packages.Add(new PackagePin { Name = name, Version = version });
+        }
+        else
+        {
+            existing.Version = version;
+        }
     }
 }

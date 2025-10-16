@@ -105,8 +105,7 @@ public class SignCommandTests : BaseCommandTests
             publisher: testPublisher,
             outputPath: _testCertificatePath,
             password: testPassword,
-            validDays: 30,
-            verbose: true);
+            validDays: 30);
 
         Assert.IsNotNull(result, "Certificate generation should succeed");
         Assert.IsTrue(File.Exists(_testCertificatePath), "Certificate file should exist");
@@ -121,13 +120,17 @@ public class SignCommandTests : BaseCommandTests
     private static bool IsCertificateFileValid(string certPath, string password)
     {
         if (!File.Exists(certPath))
+        {
             return false;
+        }
 
         try
         {
             // Check if certificate can be loaded with the correct password
             if (!TestCertificateUtils.CanLoadCertificate(certPath, password))
+            {
                 return false;
+            }
 
             // Check if certificate is not expired
             using var cert = X509CertificateLoader.LoadPkcs12FromFile(
@@ -407,8 +410,7 @@ public class SignCommandTests : BaseCommandTests
                 _testExecutablePath,
                 _testCertificatePath,
                 "testpassword",
-                timestampUrl: null,
-                verbose: true);
+                timestampUrl: null);
         }, "SignFileAsync should throw when file cannot be signed or BuildTools are not available");
 
         // The exception is guaranteed to be non-null and of the exact type
@@ -561,7 +563,6 @@ public class SignCommandTests : BaseCommandTests
             packageName: "TestPackage",
             skipPri: true,
             autoSign: false, // Don't auto-sign, we'll sign manually with wrong cert
-            verbose: true,
             cancellationToken: CancellationToken.None
         );
 
@@ -571,42 +572,28 @@ public class SignCommandTests : BaseCommandTests
             publisher: "CN=Wrong",
             outputPath: wrongCertPath,
             password: "testpassword",
-            validDays: 30,
-            verbose: true);
+            validDays: 30);
 
-        // Capture error output from Console.Error
-        using var errorOutput = new StringWriter();
-        var originalConsoleError = Console.Error;
-        Console.SetError(errorOutput);
-
-        try
+        // Arrange the sign command
+        var command = GetRequiredService<SignCommand>();
+        var args = new[]
         {
-            // Arrange the sign command
-            var command = GetRequiredService<SignCommand>();
-            var args = new[]
-            {
-                msixResult.MsixPath,
-                wrongCertPath,
-                "--password", "testpassword",
-                "--verbose"
-            };
+            msixResult.MsixPath,
+            wrongCertPath,
+            "--password", "testpassword",
+            "--verbose"
+        };
 
-            // Act
-            var parseResult = command.Parse(args);
-            var exitCode = await parseResult.InvokeAsync();
+        // Act
+        var parseResult = command.Parse(args);
+        var exitCode = await parseResult.InvokeAsync();
 
-            // Assert
-            Assert.AreEqual(1, exitCode, "Sign command should fail when publishers don't match");
+        // Assert
+        Assert.AreEqual(1, exitCode, "Sign command should fail when publishers don't match");
 
-            var errorMessage = errorOutput.ToString().Trim();
+        var errorMessage = ConsoleStdErr.ToString().Trim();
 
-            Assert.Contains("Failed to sign file: error 0x8007000B: The app manifest publisher name (CN=Right) must match the subject name of the signing certificate (CN=Wrong).", errorMessage,
-                "Expected specific error message about publisher mismatch with error code 0x8007000B");
-        }
-        finally
-        {
-            // Restore Console.Error
-            Console.SetError(originalConsoleError);
-        }
+        Assert.Contains("Failed to sign file: error 0x8007000B: The app manifest publisher name (CN=Right) must match the subject name of the signing certificate (CN=Wrong).", errorMessage,
+            "Expected specific error message about publisher mismatch with error code 0x8007000B");
     }
 }

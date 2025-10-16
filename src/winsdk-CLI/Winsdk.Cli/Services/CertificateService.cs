@@ -1,20 +1,17 @@
 using Winsdk.Cli.Helpers;
 using System.Diagnostics.Eventing.Reader;
+using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 
 namespace Winsdk.Cli.Services;
 
-internal class CertificateService : ICertificateService
+internal partial class CertificateService(
+    IBuildToolsService buildToolsService,
+    IPowerShellService powerShellService,
+    IGitignoreService gitignoreService,
+    ILogger<CertificateService> logger) : ICertificateService
 {
-    private readonly IBuildToolsService _buildToolsService;
-    private readonly IPowerShellService _powerShellService;
-
     public const string DefaultCertFileName = "devcert.pfx";
-
-    public CertificateService(IBuildToolsService buildToolsService, IPowerShellService powerShellService)
-    {
-        _buildToolsService = buildToolsService;
-        _powerShellService = powerShellService;
-    }
 
     private static Dictionary<string, string> GetCertificateEnvironmentVariables()
     {
@@ -36,7 +33,6 @@ internal class CertificateService : ICertificateService
         string outputPath,
         string password = "password",
         int validDays = 365,
-        bool verbose = true,
         CancellationToken cancellationToken = default)
     {
         if (!Path.IsPathRooted(outputPath))
@@ -61,22 +57,19 @@ internal class CertificateService : ICertificateService
 
         try
         {
-            var (exitCode, output) = await _powerShellService.RunCommandAsync(command, verbose: verbose, environmentVariables: GetCertificateEnvironmentVariables(), cancellationToken: cancellationToken);
+            var (exitCode, output) = await powerShellService.RunCommandAsync(command, environmentVariables: GetCertificateEnvironmentVariables(), cancellationToken: cancellationToken);
 
             if (exitCode != 0)
             {
                 var message = $"PowerShell command failed with exit code {exitCode}";
-                if (verbose)
+                if (logger.IsEnabled(LogLevel.Debug))
                 {
                     message += $": {output}";
                 }
                 throw new InvalidOperationException(message);
             }
 
-            if (verbose)
-            {
-                Console.WriteLine($"Certificate generated: {outputPath}");
-            }
+            logger.LogDebug("Certificate generated: {OutputPath}", outputPath);
 
             return new CertificateResult(
                 CertificatePath: outputPath,
@@ -91,7 +84,7 @@ internal class CertificateService : ICertificateService
         }
     }
 
-    public async Task<bool> InstallCertificateAsync(string certPath, string password, bool force, bool verbose, CancellationToken cancellationToken = default)
+    public async Task<bool> InstallCertificateAsync(string certPath, string password, bool force, CancellationToken cancellationToken = default)
     {
         if (!Path.IsPathRooted(certPath))
         {
@@ -103,10 +96,7 @@ internal class CertificateService : ICertificateService
             throw new FileNotFoundException($"Certificate file not found: {certPath}");
         }
 
-        if (verbose)
-        {
-            Console.WriteLine($"Installing development certificate: {certPath}");
-        }
+        logger.LogDebug("Installing development certificate: {CertPath}", certPath);
 
         try
         {
@@ -118,14 +108,11 @@ internal class CertificateService : ICertificateService
 
                 try
                 {
-                    var (_, result) = await _powerShellService.RunCommandAsync(checkCommand, verbose: false, environmentVariables: GetCertificateEnvironmentVariables(), cancellationToken: cancellationToken);
+                    var (_, result) = await powerShellService.RunCommandAsync(checkCommand, environmentVariables: GetCertificateEnvironmentVariables(), cancellationToken: cancellationToken);
 
                     if (!string.IsNullOrWhiteSpace(result))
                     {
-                        if (verbose)
-                        {
-                            Console.WriteLine("Certificate appears to already be installed");
-                        }
+                        logger.LogDebug("Certificate appears to already be installed");
                         return false;
                     }
                 }
@@ -140,12 +127,9 @@ internal class CertificateService : ICertificateService
             var absoluteCertPath = Path.GetFullPath(certPath);
             var installCommand = $"Import-PfxCertificate -FilePath '{absoluteCertPath}' -CertStoreLocation 'Cert:\\LocalMachine\\TrustedPeople' -Password (ConvertTo-SecureString -String '{password}' -Force -AsPlainText)";
 
-            await _powerShellService.RunCommandAsync(installCommand, elevated: true, verbose: verbose, cancellationToken: cancellationToken);
+            await powerShellService.RunCommandAsync(installCommand, elevated: true, cancellationToken: cancellationToken);
 
-            if (verbose)
-            {
-                Console.WriteLine("Certificate installed successfully to TrustedPeople store");
-            }
+            logger.LogDebug("Certificate installed successfully to TrustedPeople store");
 
             return true;
         }
@@ -163,15 +147,18 @@ internal class CertificateService : ICertificateService
     /// <param name="certificatePath">Path to the .pfx certificate file</param>
     /// <param name="password">Certificate password</param>
     /// <param name="timestampUrl">Timestamp server URL (optional)</param>
-    /// <param name="verbose">Enable verbose logging</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    public async Task SignFileAsync(string filePath, string certificatePath, string? password = "password", string? timestampUrl = null, bool verbose = true, CancellationToken cancellationToken = default)
+    public async Task SignFileAsync(string filePath, string certificatePath, string? password = "password", string? timestampUrl = null, CancellationToken cancellationToken = default)
     {
         if (!File.Exists(filePath))
+        {
             throw new FileNotFoundException($"File not found: {filePath}");
+        }
 
         if (!File.Exists(certificatePath))
+        {
             throw new FileNotFoundException($"Certificate file not found: {certificatePath}");
+        }
 
         var arguments = $@"sign /f ""{certificatePath}"" /p ""{password}"" /fd SHA256";
 
@@ -182,19 +169,13 @@ internal class CertificateService : ICertificateService
 
         arguments += $@" ""{filePath}""";
 
-        if (verbose)
-        {
-            Console.WriteLine($"Signing file: {filePath}");
-        }
+        logger.LogDebug("Signing file: {FilePath}", filePath);
 
         try
         {
-            await _buildToolsService.RunBuildToolAsync("signtool.exe", arguments, verbose, cancellationToken: cancellationToken);
+            await buildToolsService.RunBuildToolAsync("signtool.exe", arguments, cancellationToken: cancellationToken);
 
-            if (verbose)
-            {
-                Console.WriteLine("File signed successfully");
-            }
+            logger.LogDebug("File signed successfully");
         }
         catch (BuildToolsService.InvalidBuildToolException ex)
             when (ex.Stdout.Contains("0x800"))
@@ -242,8 +223,6 @@ internal class CertificateService : ICertificateService
     /// <param name="skipIfExists">Skip generation if certificate already exists</param>
     /// <param name="updateGitignore">Whether to update .gitignore</param>
     /// <param name="install">Whether to install the certificate after generation</param>
-    /// <param name="quiet">Suppress most console output (errors and final results still shown)</param>
-    /// <param name="verbose">Enable verbose output</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Certificate generation result, or null if skipped</returns>
     public async Task<CertificateResult?> GenerateDevCertificateWithInferenceAsync(
@@ -255,8 +234,6 @@ internal class CertificateService : ICertificateService
         bool skipIfExists = true,
         bool updateGitignore = true,
         bool install = false,
-        bool quiet = false,
-        bool verbose = true,
         CancellationToken cancellationToken = default)
     {
         try
@@ -264,26 +241,20 @@ internal class CertificateService : ICertificateService
             // Skip if certificate already exists and skipIfExists is true
             if (skipIfExists && File.Exists(outputPath))
             {
-                if (!quiet)
-                {
-                    Console.WriteLine($"{UiSymbols.Note} Development certificate already exists: {outputPath}");
-                }
+                logger.LogInformation("{UISymbol} Development certificate already exists: {OutputPath}", UiSymbols.Note, outputPath);
                 return null;
             }
 
             // Start generation message
-            if (!quiet)
-            {
-                Console.WriteLine($"{UiSymbols.Gear} Generating development certificate...");
-            }
+            logger.LogInformation("{UISymbol} Generating development certificate...", UiSymbols.Gear);
 
             // Get default publisher from system defaults
             var defaultPublisher = SystemDefaultsHelper.GetDefaultPublisherCN();
 
             // Infer publisher using the specified hierarchy
-            string publisher = await InferPublisherAsync(explicitPublisher, manifestPath, defaultPublisher, verbose, cancellationToken);
+            string publisher = await InferPublisherAsync(explicitPublisher, manifestPath, defaultPublisher, cancellationToken);
 
-            Console.WriteLine($"Certificate publisher: {publisher}");
+            logger.LogInformation("Certificate publisher: {Publisher}", publisher);
 
             // Generate the certificate
             var result = await GenerateDevCertificateAsync(
@@ -291,61 +262,51 @@ internal class CertificateService : ICertificateService
                 outputPath,
                 password,
                 validDays,
-                verbose,
                 cancellationToken);
 
             // Success message
-            Console.WriteLine($"{UiSymbols.Check} Development certificate generated → {result.CertificatePath}");
+            logger.LogInformation("{UISymbol} Development certificate generated → {CertificatePath}", UiSymbols.Check, result.CertificatePath);
 
             // Add certificate to .gitignore
             if (updateGitignore)
             {
                 var baseDirectory = Path.GetDirectoryName(outputPath) ?? Directory.GetCurrentDirectory();
                 var certFileName = Path.GetFileName(result.CertificatePath);
-                GitignoreService.AddCertificateToGitignore(baseDirectory, certFileName, verbose);
+                gitignoreService.AddCertificateToGitignore(baseDirectory, certFileName);
             }
 
             // Display password information
-            if (!quiet && password == "password")
+            if (password == "password")
             {
-                Console.WriteLine($"{UiSymbols.Note} Using default password");
+                logger.LogInformation("{UISymbol} Using default password", UiSymbols.Note);
             }
 
             // Install certificate if requested
             if (install)
             {
-                if (verbose)
-                {
-                    Console.WriteLine("Installing certificate...");
-                }
+                logger.LogDebug("Installing certificate...");
 
-                var installResult = await InstallCertificateAsync(result.CertificatePath, password, false, verbose, cancellationToken);
+                var installResult = await InstallCertificateAsync(result.CertificatePath, password, false, cancellationToken);
                 if (installResult)
                 {
-                    Console.WriteLine("✅ Certificate installed successfully!");
+                    logger.LogInformation("✅ Certificate installed successfully!");
                 }
                 else
                 {
-                    Console.WriteLine("ℹ️ Certificate was already installed");
+                    logger.LogInformation("ℹ️ Certificate was already installed");
                 }
             }
-            else if (!quiet)
+            else
             {
-                Console.WriteLine($"{UiSymbols.Note} Use 'winsdk cert install' to install the certificate for development");
+                logger.LogInformation("{UISymbol} Use 'winsdk cert install' to install the certificate for development", UiSymbols.Note);
             }
 
             return result;
         }
         catch (Exception ex)
         {
-            if (verbose)
-            {
-                Console.WriteLine($"{UiSymbols.Note} Failed to generate development certificate: {ex.Message}");
-            }
-            else if (!quiet)
-            {
-                Console.WriteLine($"{UiSymbols.Note} Failed to generate development certificate (use --verbose for details)");
-            }
+            logger.LogError("❌ Failed to generate development certificate: {Message}", ex.Message);
+            logger.LogDebug(ex, "Certificate generation failed with exception");
             throw; // Re-throw for callers that want to handle the error differently
         }
     }
@@ -361,7 +322,9 @@ internal class CertificateService : ICertificateService
     public static string ExtractPublisherFromCertificate(string certificatePath, string password)
     {
         if (!File.Exists(certificatePath))
+        {
             throw new FileNotFoundException($"Certificate file not found: {certificatePath}");
+        }
 
         try
         {
@@ -370,12 +333,16 @@ internal class CertificateService : ICertificateService
 
             var subject = cert.Subject;
             if (string.IsNullOrWhiteSpace(subject))
+            {
                 throw new InvalidOperationException("Certificate has no subject information");
+            }
 
             // Extract CN from the subject (format: "CN=Publisher, O=Organization, ...")
-            var cnMatch = System.Text.RegularExpressions.Regex.Match(subject, @"CN=([^,]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            var cnMatch = CnFieldRegex().Match(subject);
             if (!cnMatch.Success)
+            {
                 throw new InvalidOperationException($"Certificate subject does not contain CN field: {subject}");
+            }
 
             var publisher = cnMatch.Groups[1].Value.Trim();
 
@@ -437,7 +404,6 @@ internal class CertificateService : ICertificateService
         string? explicitPublisher,
         string? manifestPath,
         string defaultPublisher,
-        bool verbose,
         CancellationToken cancellationToken)
     {
         // 1. If explicit publisher is provided, use that
@@ -451,17 +417,14 @@ internal class CertificateService : ICertificateService
         {
             try
             {
-                Console.WriteLine($"Certificate publisher inferred from: {manifestPath}");
-                
+                logger.LogInformation("Certificate publisher inferred from: {ManifestPath}", manifestPath);
+
                 var identityInfo = await MsixService.ParseAppxManifestFromPathAsync(manifestPath, cancellationToken);
                 return identityInfo.Publisher;
             }
             catch (Exception ex)
             {
-                if (verbose)
-                {
-                    Console.WriteLine($"Could not extract publisher from manifest: {ex.Message}");
-                }
+                logger.LogDebug("Could not extract publisher from manifest: {Message}", ex.Message);
             }
         }
 
@@ -471,22 +434,22 @@ internal class CertificateService : ICertificateService
         {
             try
             {
-                Console.WriteLine($"Certificate publisher inferred from: {projectManifestPath}");
-                
+                logger.LogInformation("Certificate publisher inferred from: {ProjectManifestPath}", projectManifestPath);
+
                 var identityInfo = await MsixService.ParseAppxManifestFromPathAsync(projectManifestPath, cancellationToken);
                 return identityInfo.Publisher;
             }
             catch (Exception ex)
             {
-                if (verbose)
-                {
-                    Console.WriteLine($"Could not extract publisher from project manifest: {ex.Message}");
-                }
+                logger.LogDebug("Could not extract publisher from project manifest: {Message}", ex.Message);
             }
         }
 
         // 4. Use default publisher
-        Console.WriteLine($"No manifest found, using default publisher: {defaultPublisher}");
+        logger.LogInformation("No manifest found, using default publisher: {DefaultPublisher}", defaultPublisher);
         return defaultPublisher;
     }
+
+    [GeneratedRegexAttribute(@"CN=([^,]+)", RegexOptions.IgnoreCase, "en-US")]
+    private static partial Regex CnFieldRegex();
 }

@@ -53,39 +53,53 @@ internal sealed class PackageLayoutService : IPackageLayoutService
         {
             var packageDir = Path.Combine(pkgsDir, $"{packageName}.{version}");
             if (!Directory.Exists(packageDir))
+            {
                 continue;
+            }
 
             // Search for metadata directories within this specific package
             foreach (var metadataDir in SafeEnumDirs(packageDir, "metadata", SearchOption.AllDirectories))
             {
                 foreach (var f in SafeEnumFiles(metadataDir, "*.winmd", SearchOption.TopDirectoryOnly))
+                {
                     results.Add(Path.GetFullPath(f));
+                }
 
                 var v18362 = Path.Combine(metadataDir, "10.0.18362.0");
                 foreach (var f in SafeEnumFiles(v18362, "*.winmd", SearchOption.TopDirectoryOnly))
+                {
                     results.Add(Path.GetFullPath(f));
+                }
             }
 
             // Search for lib directories within this specific package
             foreach (var libDir in SafeEnumDirs(packageDir, "lib", SearchOption.AllDirectories))
             {
                 foreach (var f in SafeEnumFiles(libDir, "*.winmd", SearchOption.TopDirectoryOnly))
+                {
                     results.Add(Path.GetFullPath(f));
+                }
 
                 var uap10 = Path.Combine(libDir, "uap10.0");
                 foreach (var f in SafeEnumFiles(uap10, "*.winmd", SearchOption.TopDirectoryOnly))
+                {
                     results.Add(Path.GetFullPath(f));
+                }
 
                 var uap18362 = Path.Combine(libDir, "uap10.0.18362");
                 foreach (var f in SafeEnumFiles(uap18362, "*.winmd", SearchOption.TopDirectoryOnly))
+                {
                     results.Add(Path.GetFullPath(f));
+                }
             }
 
             // Search for References directories within this specific package
             foreach (var refDir in SafeEnumDirs(packageDir, "References", SearchOption.AllDirectories))
             {
                 foreach (var f in SafeEnumFiles(refDir, "*.winmd", SearchOption.AllDirectories))
+                {
                     results.Add(Path.GetFullPath(f));
+                }
             }
         }
 
@@ -106,7 +120,11 @@ internal sealed class PackageLayoutService : IPackageLayoutService
 
     private static void CopyTopFiles(string fromDir, string pattern, string toDir)
     {
-        if (!Directory.Exists(fromDir)) return;
+        if (!Directory.Exists(fromDir))
+        {
+            return;
+        }
+
         EnsureDir(toDir);
         foreach (var f in Directory.EnumerateFiles(fromDir, pattern, SearchOption.TopDirectoryOnly))
         {

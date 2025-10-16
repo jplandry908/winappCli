@@ -1,20 +1,21 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
 
 namespace Winsdk.Cli.Services;
 
-internal sealed class DevModeService : IDevModeService
+internal sealed class DevModeService(ILogger<DevModeService> logger) : IDevModeService
 {
     public int EnsureWin11DevMode()
     {
         if (IsEnabled())
         {
-            Console.WriteLine("Developer Mode already enabled.");
+            logger.LogInformation("Developer Mode already enabled.");
             return 0;
         }
 
-        Console.WriteLine("Developer Mode is OFF — enabling...");
+        logger.LogInformation("Developer Mode is OFF — enabling...");
 
         // 1) Prefer PowerShell elevated
         string ps = Path.Combine(
@@ -33,7 +34,7 @@ Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModel
                 $"-NoProfile -ExecutionPolicy Bypass -Command \"& {{ {EscapeForPSArg(psScript)} }}\"");
             if (exit == 0 || exit == 3010)
             {
-                Console.WriteLine("Developer Mode enabled (via PowerShell).");
+                logger.LogInformation("Developer Mode enabled (via PowerShell).");
                 return exit;
             }
         }
@@ -51,7 +52,9 @@ Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModel
 
         var cmdExit = RunElevated(cmd, "/c " + regCmds);
         if (cmdExit == 0)
-            Console.WriteLine("Developer Mode enabled (via reg.exe fallback).");
+        {
+            logger.LogInformation("Developer Mode enabled (via reg.exe fallback).");
+        }
 
         return cmdExit;
     }
@@ -60,7 +63,10 @@ Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModel
     {
         using var hklm64 = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
         using var key = hklm64.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock");
-        if (key == null) return false;
+        if (key == null)
+        {
+            return false;
+        }
 
         var dev = (int?)key.GetValue("AllowDevelopmentWithoutDevLicense") == 1;
         var sideload = (int?)key.GetValue("AllowAllTrustedApps") == 1;

@@ -184,7 +184,7 @@ public class PackageCommandTests : BaseCommandTests
         var missingTools = new List<string>();
 
         // Ensure BuildTools are installed
-        var buildToolsPath = await _buildToolsService.EnsureBuildToolsAsync(quiet: true);
+        var buildToolsPath = await _buildToolsService.EnsureBuildToolsAsync();
         if (buildToolsPath == null)
         {
             Assert.Fail("Cannot run test - BuildTools installation failed.");
@@ -249,7 +249,6 @@ public class PackageCommandTests : BaseCommandTests
             packageName: "TestPackage",
             skipPri: true,
             autoSign: false,
-            verbose: true,
             cancellationToken: CancellationToken.None
         );
 
@@ -273,7 +272,6 @@ public class PackageCommandTests : BaseCommandTests
                 packageName: "TestPackage",
                 skipPri: true,
                 autoSign: false,
-                verbose: true,
                 cancellationToken: CancellationToken.None
             );
         }, "Expected DirectoryNotFoundException when input folder does not exist.");
@@ -298,7 +296,6 @@ public class PackageCommandTests : BaseCommandTests
                 packageName: "TestPackage",
                 skipPri: true,
                 autoSign: false,
-                verbose: true,
                 cancellationToken: CancellationToken.None
             );
         }, "Expected FileNotFoundException when manifest file is missing.");
@@ -340,7 +337,6 @@ public class PackageCommandTests : BaseCommandTests
             skipPri: true,
             autoSign: false,
             manifestPath: externalManifestPath,
-            verbose: true,
             cancellationToken: CancellationToken.None
         );
 
@@ -368,7 +364,7 @@ public class PackageCommandTests : BaseCommandTests
         const string testPublisher = "CN=TestPublisher"; // This matches StandardTestManifestContent
 
         var certResult = await _certificateService.GenerateDevCertificateAsync(
-            testPublisher, certPath, testPassword, verbose: true);
+            testPublisher, certPath, testPassword);
 
         // Create minimal winsdk.yaml
         await File.WriteAllTextAsync(_configService.ConfigPath, "packages: []");
@@ -382,7 +378,6 @@ public class PackageCommandTests : BaseCommandTests
             autoSign: true,
             certificatePath: certPath,
             certificatePassword: testPassword,
-            verbose: true,
             cancellationToken: CancellationToken.None
         );
 
@@ -405,7 +400,7 @@ public class PackageCommandTests : BaseCommandTests
         const string wrongPublisher = "CN=WrongPublisher"; // This does NOT match StandardTestManifestContent
 
         var certResult = await _certificateService.GenerateDevCertificateAsync(
-            wrongPublisher, certPath, testPassword, verbose: true);
+            wrongPublisher, certPath, testPassword);
 
         // Create minimal winsdk.yaml
         await File.WriteAllTextAsync(_configService.ConfigPath, "packages: []");
@@ -421,7 +416,6 @@ public class PackageCommandTests : BaseCommandTests
                 autoSign: true,
                 certificatePath: certPath,
                 certificatePassword: testPassword,
-                verbose: true,
                 cancellationToken: CancellationToken.None
             );
         });
@@ -453,7 +447,7 @@ public class PackageCommandTests : BaseCommandTests
         const string wrongPublisher = "CN=DifferentPublisher";
 
         await _certificateService.GenerateDevCertificateAsync(
-            wrongPublisher, certPath, testPassword, verbose: true);
+            wrongPublisher, certPath, testPassword);
 
         // Create minimal winsdk.yaml
         await File.WriteAllTextAsync(_configService.ConfigPath, "packages: []");
@@ -470,7 +464,6 @@ public class PackageCommandTests : BaseCommandTests
                 certificatePath: certPath,
                 certificatePassword: testPassword,
                 manifestPath: externalManifestPath,
-                verbose: true,
                 cancellationToken: CancellationToken.None
             );
         });
@@ -494,7 +487,7 @@ public class PackageCommandTests : BaseCommandTests
 
         // Create a test certificate using the existing certificate service
         var certResult = _certificateService.GenerateDevCertificateAsync(
-            testPublisherCN, certPath, testPassword, verbose: true).GetAwaiter().GetResult();
+            testPublisherCN, certPath, testPassword).GetAwaiter().GetResult();
 
         // Act
         var extractedPublisher = CertificateService.ExtractPublisherFromCertificate(certPath, testPassword);
@@ -525,7 +518,7 @@ public class PackageCommandTests : BaseCommandTests
         const string wrongPassword = "wrong123";
 
         _certificateService.GenerateDevCertificateAsync(
-            "CN=PasswordTestPublisher", certPath, correctPassword, verbose: true).GetAwaiter().GetResult();
+            "CN=PasswordTestPublisher", certPath, correctPassword).GetAwaiter().GetResult();
 
         // Act & Assert
         Assert.ThrowsExactly<InvalidOperationException>(() =>
@@ -545,7 +538,7 @@ public class PackageCommandTests : BaseCommandTests
 
         // Create certificate
         await _certificateService.GenerateDevCertificateAsync(
-            commonPublisher, certPath, testPassword, verbose: true);
+            commonPublisher, certPath, testPassword);
 
         // Create manifest with same publisher
         var manifestContent = StandardTestManifestContent.Replace(
@@ -566,7 +559,7 @@ public class PackageCommandTests : BaseCommandTests
 
         // Create certificate with one publisher
         await _certificateService.GenerateDevCertificateAsync(
-            "CN=CertificatePublisher", certPath, testPassword, verbose: true);
+            "CN=CertificatePublisher", certPath, testPassword);
 
         // Create manifest with different publisher
         var manifestContent = StandardTestManifestContent.Replace(

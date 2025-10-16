@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Winsdk.Cli.Helpers;
@@ -21,12 +22,14 @@ internal sealed class PackageCacheService : IPackageCacheService
 {
     private const string CacheFileName = "package-cache.json";
     private readonly string _cacheFilePath;
+    private readonly ILogger<PackageCacheService> _logger;
 
-    public PackageCacheService(IWinsdkDirectoryService directoryService)
+    public PackageCacheService(IWinsdkDirectoryService directoryService, ILogger<PackageCacheService> logger)
     {
         var globalWinsdkDirectory = directoryService.GetGlobalWinsdkDirectory();
         var packagesDir = Path.Combine(globalWinsdkDirectory, "packages");
         _cacheFilePath = Path.Combine(packagesDir, CacheFileName);
+        _logger = logger;
     }
 
     /// <summary>
@@ -48,7 +51,7 @@ internal sealed class PackageCacheService : IPackageCacheService
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Warning: Failed to load package cache: {ex.Message}");
+            _logger.LogError("Warning: Failed to load package cache: {ErrorMessage}", ex.Message);
             return new PackageCache();
         }
     }
@@ -57,9 +60,8 @@ internal sealed class PackageCacheService : IPackageCacheService
     /// Save the package cache to disk
     /// </summary>
     /// <param name="cache">The cache to save</param>
-    /// <param name="quiet">Suppress progress messages</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    public async Task SaveAsync(PackageCache cache, bool quiet = false, CancellationToken cancellationToken = default)
+    public async Task SaveAsync(PackageCache cache, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -73,14 +75,11 @@ internal sealed class PackageCacheService : IPackageCacheService
             using var stream = new FileStream(_cacheFilePath, FileMode.Create, FileAccess.Write);
             await JsonSerializer.SerializeAsync(stream, cache, PackageCacheJsonContext.Default.PackageCache, cancellationToken);
 
-            if (!quiet)
-            {
-                Console.WriteLine($"{UiSymbols.Save} Package cache updated");
-            }
+            _logger.LogInformation("{UISymbol} Package cache updated", UiSymbols.Save);
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Warning: Failed to save package cache: {ex.Message}");
+            _logger.LogError("Warning: Failed to save package cache: {ErrorMessage}", ex.Message);
         }
     }
 
@@ -90,9 +89,8 @@ internal sealed class PackageCacheService : IPackageCacheService
     /// <param name="packageName">The main package name that was requested</param>
     /// <param name="version">The main package version that was requested</param>
     /// <param name="installedPackages">Dictionary of all packages that were installed (including dependencies)</param>
-    /// <param name="quiet">Suppress progress messages</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    public async Task UpdatePackageAsync(string packageName, string version, Dictionary<string, string> installedPackages, bool quiet = false, CancellationToken cancellationToken = default)
+    public async Task UpdatePackageAsync(string packageName, string version, Dictionary<string, string> installedPackages, CancellationToken cancellationToken = default)
     {
         var cache = await LoadAsync(cancellationToken);
         var packageKey = $"{packageName}.{version}";
@@ -105,7 +103,7 @@ internal sealed class PackageCacheService : IPackageCacheService
         // Store only the dependencies/related packages, not the main package itself
         cache.InstalledPackages[packageKey] = filteredPackages;
 
-        await SaveAsync(cache, quiet, cancellationToken);
+        await SaveAsync(cache, cancellationToken);
     }
 
     /// <summary>

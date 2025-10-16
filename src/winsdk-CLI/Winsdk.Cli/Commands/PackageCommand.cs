@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.CommandLine;
 using System.CommandLine.Invocation;
 using Winsdk.Cli.Services;
@@ -85,7 +86,7 @@ internal class PackageCommand : Command
         Options.Add(SelfContainedOption);
     }
 
-    public class Handler(IMsixService msixService) : AsynchronousCommandLineAction
+    public class Handler(IMsixService msixService, ILogger<PackageCommand> logger) : AsynchronousCommandLineAction
     {
         public override async Task<int> InvokeAsync(ParseResult parseResult, CancellationToken cancellationToken = default)
         {
@@ -100,32 +101,27 @@ internal class PackageCommand : Command
             var publisher = parseResult.GetValue(PublisherOption);
             var manifestPath = parseResult.GetValue(ManifestOption);
             var selfContained = parseResult.GetValue(SelfContainedOption);
-            var verbose = parseResult.GetValue(WinSdkRootCommand.VerboseOption);
-
             try
             {
                 // Auto-sign if certificate is provided or if generate-cert is specified
                 var autoSign = !string.IsNullOrEmpty(certPath) || generateCert;
 
-                var result = await msixService.CreateMsixPackageAsync(inputFolder, output, name, skipPri, autoSign, certPath, certPassword, generateCert, installCert, publisher, manifestPath, selfContained, verbose, cancellationToken);
+                var result = await msixService.CreateMsixPackageAsync(inputFolder, output, name, skipPri, autoSign, certPath, certPassword, generateCert, installCert, publisher, manifestPath, selfContained, cancellationToken);
 
-                Console.WriteLine("✅ MSIX package created successfully!");
+                logger.LogInformation("✅ MSIX package created successfully!");
 
-                Console.WriteLine($"📦 Package: {result.MsixPath}");
+                logger.LogInformation("📦 Package: {PackagePath}", result.MsixPath);
                 if (result.Signed)
                 {
-                    Console.WriteLine($"🔐 Package has been signed");
+                    logger.LogInformation("🔐 Package has been signed");
                 }
 
                 return 0;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ Failed to create MSIX package: {ex.Message}");
-                if (verbose)
-                {
-                    Console.Error.WriteLine(ex.StackTrace);
-                }
+                logger.LogError("❌ Failed to create MSIX package: {ErrorMessage}", ex.Message);
+                logger.LogDebug("Stack Trace: {StackTrace}", ex.StackTrace);
                 return 1;
             }
         }

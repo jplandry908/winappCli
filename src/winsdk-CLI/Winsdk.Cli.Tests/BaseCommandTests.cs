@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Winsdk.Cli.Helpers;
 
 namespace Winsdk.Cli.Tests;
@@ -6,12 +7,20 @@ namespace Winsdk.Cli.Tests;
 public class BaseCommandTests : IDisposable
 {
     private ServiceProvider _serviceProvider;
+    protected StringWriter ConsoleStdOut { get; } = new StringWriter();
+    protected StringWriter ConsoleStdErr { get; } = new StringWriter();
 
     public BaseCommandTests()
     {
         var services = new ServiceCollection()
             .ConfigureServices()
-            .ConfigureCommands();
+            .ConfigureCommands()
+            .AddLogging(b =>
+            {
+                b.ClearProviders();
+                b.AddTextWriterLogger(ConsoleStdOut, ConsoleStdErr);
+                b.SetMinimumLevel(LogLevel.Debug);
+            });
 
         _serviceProvider = services.BuildServiceProvider();
     }
@@ -19,6 +28,8 @@ public class BaseCommandTests : IDisposable
     public void Dispose()
     {
         _serviceProvider?.Dispose();
+        ConsoleStdOut?.Dispose();
+        ConsoleStdErr?.Dispose();
         GC.SuppressFinalize(this);
     }
 

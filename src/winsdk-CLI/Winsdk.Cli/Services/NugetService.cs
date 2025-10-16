@@ -1,10 +1,11 @@
+using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Text.Json;
 using Winsdk.Cli.Helpers;
 
 namespace Winsdk.Cli.Services;
 
-internal class NugetService : INugetService
+internal class NugetService(ILogger<NugetService> logger) : INugetService
 {
     private static readonly HttpClient Http = new();
     private const string NugetExeUrl = "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe";
@@ -26,7 +27,9 @@ internal class NugetService : INugetService
         var toolsDir = Path.Combine(winsdkDir, "tools");
         var nugetExe = Path.Combine(toolsDir, "nuget.exe");
         if (File.Exists(nugetExe))
+        {
             return;
+        }
 
         Directory.CreateDirectory(toolsDir);
         using var resp = await Http.GetAsync(NugetExeUrl, cancellationToken);
@@ -43,20 +46,29 @@ internal class NugetService : INugetService
         using var s = await resp.Content.ReadAsStreamAsync(cancellationToken);
         using var doc = await JsonDocument.ParseAsync(s, cancellationToken: cancellationToken);
         if (!doc.RootElement.TryGetProperty("versions", out var versionsElem) || versionsElem.ValueKind != JsonValueKind.Array)
+        {
             throw new InvalidOperationException($"No versions found for {packageName}");
+        }
 
         var list = new List<string>();
         foreach (var el in versionsElem.EnumerateArray())
         {
             var v = el.GetString();
-            if (!string.IsNullOrWhiteSpace(v)) list.Add(v);
+            if (!string.IsNullOrWhiteSpace(v))
+            {
+                list.Add(v);
+            }
         }
 
         if (!includePrerelease)
+        {
             list = list.Where(v => !v.Contains('-', StringComparison.Ordinal)).ToList();
+        }
 
         if (list.Count == 0)
+        {
             throw new InvalidOperationException($"No versions found for {packageName}");
+        }
 
         list.Sort(CompareVersions);
         return list[^1];
@@ -78,7 +90,7 @@ internal class NugetService : INugetService
         var expectedFolder = Path.Combine(outputDir, $"{package}.{version}");
         if (Directory.Exists(expectedFolder))
         {
-            Console.WriteLine($"{UiSymbols.Skip}  {package} {version} already present");
+            logger.LogInformation("{UISymbol} {Package} {Version} already present", UiSymbols.Skip, package, version);
             packages[package] = version;
             return packages;
         }
@@ -99,8 +111,8 @@ internal class NugetService : INugetService
         await p.WaitForExitAsync(cancellationToken);
         if (p.ExitCode != 0)
         {
-            Console.Error.WriteLine(stdout);
-            Console.Error.WriteLine(stderr);
+            logger.LogError("{StdOut}", stdout);
+            logger.LogError("{StdErr}", stderr);
             throw new InvalidOperationException($"nuget install failed for {package} {version}");
         }
 
@@ -119,7 +131,7 @@ internal class NugetService : INugetService
                         var installedName = installed[..spaceIdx];
                         var installedVersion = installed[(spaceIdx + 1)..];
                         packages[installedName] = installedVersion;
-                        Console.WriteLine($"{UiSymbols.Check}  Installed {installedName} {installedVersion}");
+                        logger.LogInformation("{UISymbol} Installed {InstalledName} {InstalledVersion}", UiSymbols.Check, installedName, installedVersion);
                     }
                 }
             }
@@ -138,7 +150,10 @@ internal class NugetService : INugetService
     private static string EscapeArg(string v)
     {
         if (v.Contains(' ') || v.Contains('"'))
+        {
             return Quote(v.Replace("\"", "\\\""));
+        }
+
         return v;
     }
 
@@ -150,7 +165,10 @@ internal class NugetService : INugetService
         {
             int ai = i < ap.Length && int.TryParse(ap[i], out var av) ? av : 0;
             int bi = i < bp.Length && int.TryParse(bp[i], out var bv) ? bv : 0;
-            if (ai != bi) return ai.CompareTo(bi);
+            if (ai != bi)
+            {
+                return ai.CompareTo(bi);
+            }
         }
         return 0;
     }
