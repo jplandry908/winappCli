@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.CommandLine;
 using System.CommandLine.Invocation;
 using Winsdk.Cli.Services;
@@ -72,7 +73,7 @@ internal class CertGenerateCommand : Command
         Options.Add(IfExistsOption);
     }
 
-    public class Handler(ICertificateService certificateService) : AsynchronousCommandLineAction
+    public class Handler(ICertificateService certificateService, ILogger<CertGenerateCommand> logger) : AsynchronousCommandLineAction
     {
         public override async Task<int> InvokeAsync(ParseResult parseResult, CancellationToken cancellationToken = default)
         {
@@ -83,15 +84,14 @@ internal class CertGenerateCommand : Command
             var validDays = parseResult.GetRequiredValue(ValidDaysOption);
             var install = parseResult.GetRequiredValue(InstallOption);
             var ifExists = parseResult.GetRequiredValue(IfExistsOption);
-            var verbose = parseResult.GetValue(WinSdkRootCommand.VerboseOption);
 
             // Check if certificate file already exists
             if (File.Exists(output))
             {
-                Console.Error.WriteLine($"❌ Certificate file already exists: {output}");
+                logger.LogError("❌ Certificate file already exists: {Output}", output);
                 if (ifExists == IfExists.Error)
                 {
-                    Console.Error.WriteLine("Please specify a different output path or remove the existing file.");
+                    logger.LogError("Please specify a different output path or remove the existing file.");
                     return 1;
                 }
                 else if (ifExists == IfExists.Skip)
@@ -100,7 +100,7 @@ internal class CertGenerateCommand : Command
                 }
                 else if (ifExists == IfExists.Overwrite)
                 {
-                    Console.WriteLine($"⚠️ Overwriting existing certificate file: {output}");
+                    logger.LogWarning("⚠️ Overwriting existing certificate file: {Output}", output);
                 }
             }
 
@@ -114,8 +114,6 @@ internal class CertGenerateCommand : Command
                 skipIfExists: false,
                 updateGitignore: true,
                 install: install,
-                quiet: false,
-                verbose: verbose,
                 cancellationToken: cancellationToken);
 
             return 0;

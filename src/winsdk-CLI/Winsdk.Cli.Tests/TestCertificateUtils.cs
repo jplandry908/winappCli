@@ -18,10 +18,14 @@ internal static class TestCertificateUtils
     public static bool HasDigitalSignature(string filePath)
     {
         if (!File.Exists(filePath))
+        {
             return false;
+        }
 
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
             return false; // Can only verify on Windows
+        }
 
         try
         {
@@ -33,7 +37,9 @@ internal static class TestCertificateUtils
             fileStream.Seek(0, SeekOrigin.Begin);
             var dosSignature = reader.ReadUInt16();
             if (dosSignature != 0x5A4D) // "MZ"
+            {
                 return false;
+            }
 
             // Get PE header offset
             fileStream.Seek(60, SeekOrigin.Begin);
@@ -43,7 +49,9 @@ internal static class TestCertificateUtils
             fileStream.Seek(peHeaderOffset, SeekOrigin.Begin);
             var peSignature = reader.ReadUInt32();
             if (peSignature != 0x00004550) // "PE\0\0"
+            {
                 return false;
+            }
 
             // Skip COFF header (20 bytes)
             fileStream.Seek(peHeaderOffset + 4 + 20, SeekOrigin.Begin);
@@ -99,7 +107,9 @@ internal static class TestCertificateUtils
     public static bool CanLoadCertificate(string certPath, string password)
     {
         if (!File.Exists(certPath))
+        {
             return false;
+        }
 
         try
         {
@@ -166,7 +176,9 @@ internal static class TestCertificateUtils
     public static async Task<bool> VerifySignatureWithSigntool(string filePath)
     {
         if (!File.Exists(filePath))
+        {
             return false;
+        }
 
         try
         {
@@ -182,7 +194,9 @@ internal static class TestCertificateUtils
 
             using var process = Process.Start(psi);
             if (process == null)
+            {
                 return false;
+            }
 
             await process.WaitForExitAsync();
             return process.ExitCode == 0;

@@ -17,7 +17,6 @@ internal interface IMsixService
         string? publisher = null,
         string? manifestPath = null,
         bool selfContained = false,
-        bool verbose = true,
         CancellationToken cancellationToken = default);
 
     public Task<MsixIdentityResult> AddMsixIdentityToExeAsync(
@@ -25,6 +24,5 @@ internal interface IMsixService
         string appxManifestPath,
         bool noInstall,
         string? applicationLocation = null,
-        bool verbose = true,
         CancellationToken cancellationToken = default);
 }

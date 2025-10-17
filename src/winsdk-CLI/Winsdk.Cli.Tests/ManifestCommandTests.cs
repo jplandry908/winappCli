@@ -267,28 +267,14 @@ public class ManifestCommandTests : BaseCommandTests
             "--yes" // Skip interactive prompts
         };
 
-        // Capture console output
-        using var consoleOutput = new StringWriter();
-        var originalConsoleOut = Console.Out;
-        Console.SetOut(consoleOutput);
+        var parseResult = generateCommand.Parse(args);
+        var exitCode = await parseResult.InvokeAsync();
 
-        try
-        {
-            // Act
-            var parseResult = generateCommand.Parse(args);
-            var exitCode = await parseResult.InvokeAsync();
+        // Assert
+        Assert.AreEqual(0, exitCode, "Generate command should complete successfully");
 
-            // Assert
-            Assert.AreEqual(0, exitCode, "Generate command should complete successfully");
-
-            var output = consoleOutput.ToString();
-            Assert.Contains("Generating manifest", output, "Verbose output should contain generation message");
-        }
-        finally
-        {
-            // Restore console output
-            Console.SetOut(originalConsoleOut);
-        }
+        var output = ConsoleStdOut.ToString();
+        Assert.Contains("Generating manifest", output, "Verbose output should contain generation message");
     }
 
     [TestMethod]

@@ -9,7 +9,6 @@ internal interface IPackageInstallationService
         IEnumerable<string> packages,
         bool includeExperimental = false,
         bool ignoreConfig = false,
-        bool quiet = false,
         CancellationToken cancellationToken = default);
     
     Task<bool> EnsurePackageAsync(
@@ -17,6 +16,5 @@ internal interface IPackageInstallationService
         string packageName,
         string? version = null,
         bool includeExperimental = false,
-        bool quiet = false,
         CancellationToken cancellationToken = default);
 }

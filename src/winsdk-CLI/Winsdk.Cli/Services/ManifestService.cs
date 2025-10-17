@@ -1,27 +1,26 @@
+using Microsoft.Extensions.Logging;
 using System.Text.RegularExpressions;
 using Winsdk.Cli.Helpers;
 
 namespace Winsdk.Cli.Services;
 
-internal class ManifestService : IManifestService
+internal partial class ManifestService(
+    IManifestTemplateService manifestTemplateService,
+    ILogger<ManifestService> logger) : IManifestService
 {
     public async Task GenerateManifestAsync(
-        string directory, 
-        string? packageName, 
-        string? publisherName, 
+        string directory,
+        string? packageName,
+        string? publisherName,
         string version,
         string description,
-        string? executable, 
-        bool sparse, 
-        string? logoPath, 
-        bool yes, 
-        bool verbose,
+        string? executable,
+        bool sparse,
+        string? logoPath,
+        bool yes,
         CancellationToken cancellationToken = default)
     {
-        if (verbose)
-        {
-            Console.WriteLine($"Generating manifest in directory: {directory}");
-        }
+        logger.LogDebug("Generating manifest in directory: {Directory}", directory);
 
         // Check if manifest already exists
         var manifestPath = MsixService.FindProjectManifest(directory);
@@ -45,15 +44,12 @@ internal class ManifestService : IManifestService
             executable = PromptForValue("Executable", executable);
         }
 
-        if (verbose)
-        {
-            Console.WriteLine($"Logo path: {logoPath ?? "None"}");
-        }
+        logger.LogDebug("Logo path: {LogoPath}", logoPath ?? "None");
 
         packageName = CleanPackageName(packageName);
 
         // Generate complete manifest using shared service
-        await ManifestTemplateService.GenerateCompleteManifestAsync(
+        await manifestTemplateService.GenerateCompleteManifestAsync(
             directory,
             packageName,
             publisherName,
@@ -61,13 +57,12 @@ internal class ManifestService : IManifestService
             executable,
             sparse,
             description,
-            verbose,
             cancellationToken);
 
         // If logo path is provided, copy it as additional asset
         if (!string.IsNullOrEmpty(logoPath) && File.Exists(logoPath))
         {
-            await CopyLogoAsAdditionalAssetAsync(directory, logoPath, verbose, cancellationToken);
+            await CopyLogoAsAdditionalAssetAsync(directory, logoPath, cancellationToken);
         }
     }
 
@@ -89,7 +84,7 @@ internal class ManifestService : IManifestService
 
         // Remove invalid characters (keep only letters, numbers, hyphens, underscores, periods, and spaces)
         // ST_AllowedAsciiCharSet pattern="[-_. A-Za-z0-9]+"
-        cleaned = Regex.Replace(cleaned, @"[^A-Za-z0-9\-_. ]", "");
+        cleaned = InvalidPackageNameCharRegex().Replace(cleaned, "");
 
         // Check if it starts with underscore BEFORE removing them
         bool startsWithUnderscore = cleaned.StartsWith('_');
@@ -118,13 +113,13 @@ internal class ManifestService : IManifestService
         // Truncate to maximum length of 50 characters
         if (cleaned.Length > 50)
         {
-            cleaned = cleaned.Substring(0, 50).TrimEnd(); // Trim end in case we cut off mid-word
+            cleaned = cleaned[..50].TrimEnd(); // Trim end in case we cut off mid-word
         }
 
         return cleaned;
     }
 
-    private async Task CopyLogoAsAdditionalAssetAsync(string directory, string logoPath, bool verbose, CancellationToken cancellationToken = default)
+    private async Task CopyLogoAsAdditionalAssetAsync(string directory, string logoPath, CancellationToken cancellationToken = default)
     {
         var assetsDir = Path.Combine(directory, "Assets");
         Directory.CreateDirectory(assetsDir);
@@ -134,13 +129,10 @@ internal class ManifestService : IManifestService
 
         using var sourceStream = new FileStream(logoPath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 4096, useAsync: true);
         using var destinationStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 4096, useAsync: true);
-        
+
         await sourceStream.CopyToAsync(destinationStream, cancellationToken);
 
-        if (verbose)
-        {
-            Console.WriteLine($"Logo copied to: {destinationPath}");
-        }
+        logger.LogDebug("Logo copied to: {DestinationPath}", destinationPath);
     }
 
     private string PromptForValue(string prompt, string defaultValue)
@@ -149,9 +141,12 @@ internal class ManifestService : IManifestService
         {
             return defaultValue;
         }
-        
+
         Console.Write($"{prompt} ({defaultValue}): ");
         var input = Console.ReadLine();
         return string.IsNullOrWhiteSpace(input) ? defaultValue : input.Trim();
     }
+
+    [GeneratedRegex(@"[^A-Za-z0-9\-_. ]")]
+    private static partial Regex InvalidPackageNameCharRegex();
 }

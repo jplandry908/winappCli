@@ -12,6 +12,5 @@ internal interface IManifestService
         bool sparse,
         string? logoPath,
         bool yes,
-        bool verbose,
         CancellationToken cancellationToken = default);
 }

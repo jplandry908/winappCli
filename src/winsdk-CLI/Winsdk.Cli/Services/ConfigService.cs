@@ -17,7 +17,11 @@ internal sealed class ConfigService : IConfigService
 
     public WinsdkConfig Load()
     {
-        if (!Exists()) return new WinsdkConfig();
+        if (!Exists())
+        {
+            return new WinsdkConfig();
+        }
+
         var text = File.ReadAllText(ConfigPath);
         return Parse(text);
     }
@@ -37,8 +41,15 @@ internal sealed class ConfigService : IConfigService
         while ((line = sr.ReadLine()) != null)
         {
             var t = line.Trim();
-            if (t.StartsWith('#') || t.Length == 0) continue;
-            if (t.Equals("packages:", StringComparison.OrdinalIgnoreCase)) continue;
+            if (t.StartsWith('#') || t.Length == 0)
+            {
+                continue;
+            }
+
+            if (t.Equals("packages:", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
 
             if (t.StartsWith("- name:", StringComparison.OrdinalIgnoreCase))
             {

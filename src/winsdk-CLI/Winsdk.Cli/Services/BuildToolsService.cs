@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Winsdk.Cli.Helpers;
@@ -5,21 +6,14 @@ using Winsdk.Cli.Models;
 
 namespace Winsdk.Cli.Services;
 
-internal class BuildToolsService : IBuildToolsService
+internal partial class BuildToolsService(
+    IConfigService configService,
+    IWinsdkDirectoryService winsdkDirectoryService,
+    IPackageInstallationService packageInstallationService,
+    ILogger<BuildToolsService> logger) : IBuildToolsService
 {
     internal const string BUILD_TOOLS_PACKAGE = "Microsoft.Windows.SDK.BuildTools";
     internal const string CPP_SDK_PACKAGE = "Microsoft.Windows.SDK.CPP";
-
-    private readonly IConfigService _configService;
-    private readonly IWinsdkDirectoryService _winsdkDirectoryService;
-    private readonly IPackageInstallationService _packageInstallationService;
-
-    public BuildToolsService(IConfigService configService, IWinsdkDirectoryService winsdkDirectoryService, IPackageInstallationService packageInstallationService)
-    {
-        _configService = configService;
-        _winsdkDirectoryService = winsdkDirectoryService;
-        _packageInstallationService = packageInstallationService;
-    }
 
     /// <summary>
     /// Find a path within any package structure (generic version)
@@ -31,10 +25,12 @@ internal class BuildToolsService : IBuildToolsService
     /// <returns>Full path to the requested location, or null if not found</returns>
     private string? FindPackagePath(string packageName, string subPath, string? finalSubPath = null, bool requireArchitecture = false)
     {
-        var winsdkDir = _winsdkDirectoryService.GetGlobalWinsdkDirectory();
+        var winsdkDir = winsdkDirectoryService.GetGlobalWinsdkDirectory();
         var packagesDir = Path.Combine(winsdkDir, "packages");
         if (!Directory.Exists(packagesDir))
+        {
             return null;
+        }
 
         // Find the package directory
         var packageDirs = Directory.EnumerateDirectories(packagesDir)
@@ -42,12 +38,14 @@ internal class BuildToolsService : IBuildToolsService
             .ToArray();
 
         if (packageDirs.Length == 0)
+        {
             return null;
+        }
 
         WinsdkConfig? pinnedConfig = null;
-        if (_configService.Exists())
+        if (configService.Exists())
         {
-            pinnedConfig = _configService.Load();
+            pinnedConfig = configService.Load();
         }
 
         string? selectedPackageDir = null;
@@ -78,15 +76,19 @@ internal class BuildToolsService : IBuildToolsService
 
         var basePath = Path.Combine(selectedPackageDir, subPath);
         if (!Directory.Exists(basePath))
+        {
             return null;
+        }
 
         // Find the version folder (should be something like 10.0.26100.0)
         var versionFolders = Directory.EnumerateDirectories(basePath)
-            .Where(d => Regex.IsMatch(Path.GetFileName(d), @"^\d+\.\d+\.\d+\.\d+$"))
+            .Where(d => VersionFolderRegex().IsMatch(Path.GetFileName(d)))
             .ToArray();
 
         if (versionFolders.Length == 0)
+        {
             return null;
+        }
 
         // Use the latest version (sort by version number)
         var latestVersion = versionFolders
@@ -145,7 +147,9 @@ internal class BuildToolsService : IBuildToolsService
         {
             var versionPart = string.Join(".", parts.Skip(parts.Length - 4));
             if (Version.TryParse(versionPart, out var version))
+            {
                 return version;
+            }
         }
         return new Version(0, 0, 0, 0);
     }
@@ -164,13 +168,17 @@ internal class BuildToolsService : IBuildToolsService
     /// <returns>Full path to the executable if found, null otherwise</returns>
     public string? GetBuildToolPath(string toolName)
     {
-        var winsdkDir = _winsdkDirectoryService.GetGlobalWinsdkDirectory();
+        var winsdkDir = winsdkDirectoryService.GetGlobalWinsdkDirectory();
         if (winsdkDir == null)
+        {
             return null;
+        }
 
         var binPath = FindBuildToolsBinPath();
         if (binPath == null)
+        {
             return null;
+        }
 
         var toolPath = Path.Combine(binPath, toolName);
         return File.Exists(toolPath) ? toolPath : null;
@@ -180,12 +188,11 @@ internal class BuildToolsService : IBuildToolsService
     /// Ensures a build tool is available by finding it in existing installation or installing BuildTools if necessary
     /// </summary>
     /// <param name="toolName">Name of the tool (e.g., 'mt.exe', 'signtool.exe'). The .exe extension will be automatically added if not present.</param>
-    /// <param name="quiet">Suppress progress messages during auto-installation</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Full path to the executable. Throws an exception if the tool cannot be found or installed.</returns>
     /// <exception cref="FileNotFoundException">Thrown when the tool cannot be found even after installing BuildTools</exception>
     /// <exception cref="InvalidOperationException">Thrown when BuildTools installation fails</exception>
-    public async Task<string> EnsureBuildToolAvailableAsync(string toolName, bool quiet = false, CancellationToken cancellationToken = default)
+    public async Task<string> EnsureBuildToolAvailableAsync(string toolName, CancellationToken cancellationToken = default)
     {
         // First, try to find the tool in existing installation
         var toolPath = GetBuildToolPath(toolName);
@@ -197,7 +204,7 @@ internal class BuildToolsService : IBuildToolsService
         // If tool not found, ensure BuildTools are installed
         if (toolPath == null)
         {
-            var binPath = await EnsureBuildToolsAsync(quiet: quiet, cancellationToken: cancellationToken);
+            var binPath = await EnsureBuildToolsAsync(cancellationToken: cancellationToken);
             if (binPath == null)
             {
                 throw new InvalidOperationException("Could not install or find Windows SDK Build Tools.");
@@ -223,11 +230,10 @@ internal class BuildToolsService : IBuildToolsService
     /// <summary>
     /// Ensure BuildTools package is installed, downloading it if necessary
     /// </summary>
-    /// <param name="quiet">Suppress progress messages</param>
     /// <param name="forceLatest">Force installation of the latest version, even if a version is already installed</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Path to BuildTools bin directory if successful, null otherwise</returns>
-    public async Task<string?> EnsureBuildToolsAsync(bool quiet = false, bool forceLatest = false, CancellationToken cancellationToken = default)
+    public async Task<string?> EnsureBuildToolsAsync(bool forceLatest = false, CancellationToken cancellationToken = default)
     {
         // Check if BuildTools are already installed (unless forcing latest)
         var existingBinPath = FindBuildToolsBinPath();
@@ -238,28 +244,24 @@ internal class BuildToolsService : IBuildToolsService
 
         // Get pinned version if available (ignore if forcing latest)
         string? pinnedVersion = null;
-        if (_configService.Exists() && !forceLatest)
+        if (configService.Exists() && !forceLatest)
         {
-            var pinnedConfig = _configService.Load();
+            var pinnedConfig = configService.Load();
             pinnedVersion = pinnedConfig.GetVersion(BUILD_TOOLS_PACKAGE);
         }
 
         // BuildTools not found or forcing latest, install them
-        if (!quiet)
-        {
-            var actionMessage = existingBinPath != null ? "Updating" : "installing";
-            var versionInfo = !string.IsNullOrWhiteSpace(pinnedVersion) ? $" (pinned version {pinnedVersion})" : forceLatest ? " (latest version)" : "";
-            Console.WriteLine($"{UiSymbols.Wrench} {actionMessage} {BUILD_TOOLS_PACKAGE}{versionInfo}...");
-        }
+        var actionMessage = existingBinPath != null ? "Updating" : "Installing";
+        var versionInfo = !string.IsNullOrWhiteSpace(pinnedVersion) ? $" (pinned version {pinnedVersion})" : forceLatest ? " (latest version)" : "";
+        logger.LogInformation("{UISymbol} {ActionMessage} {BUILD_TOOLS_PACKAGE}{VersionInfo}...", UiSymbols.Wrench, actionMessage, BUILD_TOOLS_PACKAGE, versionInfo);
 
-        var winsdkDir = _winsdkDirectoryService.GetGlobalWinsdkDirectory();
+        var winsdkDir = winsdkDirectoryService.GetGlobalWinsdkDirectory();
 
-        var success = await _packageInstallationService.EnsurePackageAsync(
+        var success = await packageInstallationService.EnsurePackageAsync(
             winsdkDir,
             BUILD_TOOLS_PACKAGE,
             version: pinnedVersion,
             includeExperimental: false,
-            quiet: quiet,
             cancellationToken: cancellationToken);
 
         if (!success)
@@ -269,9 +271,9 @@ internal class BuildToolsService : IBuildToolsService
 
         // Verify installation and return bin path
         var binPath = FindBuildToolsBinPath();
-        if (binPath != null && !quiet)
+        if (binPath != null)
         {
-            Console.WriteLine($"{UiSymbols.Check} BuildTools installed successfully → {binPath}");
+            logger.LogInformation("{UISymbol} BuildTools installed successfully → {BinPath}", UiSymbols.Check, binPath);
         }
 
         return binPath;
@@ -282,16 +284,14 @@ internal class BuildToolsService : IBuildToolsService
     /// </summary>
     /// <param name="toolName">Name of the tool (e.g., 'mt.exe', 'signtool.exe')</param>
     /// <param name="arguments">Arguments to pass to the tool</param>
-    /// <param name="verbose">Whether to output verbose information</param>
-    /// <param name="quiet">Suppress progress messages during auto-installation of BuildTools</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Tuple containing (stdout, stderr)</returns>
-    public async Task<(string stdout, string stderr)> RunBuildToolAsync(string toolName, string arguments, bool verbose = false, bool quiet = false, CancellationToken cancellationToken = default)
+    public async Task<(string stdout, string stderr)> RunBuildToolAsync(string toolName, string arguments, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         // Ensure the build tool is available, installing BuildTools if necessary
-        var toolPath = await EnsureBuildToolAvailableAsync(toolName, quiet: quiet, cancellationToken: cancellationToken);
+        var toolPath = await EnsureBuildToolAvailableAsync(toolName, cancellationToken: cancellationToken);
 
         var psi = new ProcessStartInfo
         {
@@ -310,10 +310,14 @@ internal class BuildToolsService : IBuildToolsService
         var stderr = await p.StandardError.ReadToEndAsync(cancellationToken);
         await p.WaitForExitAsync(cancellationToken);
 
-        if (verbose)
+        if (!string.IsNullOrWhiteSpace(stdout))
         {
-            if (!string.IsNullOrWhiteSpace(stdout)) Console.WriteLine(stdout);
-            if (!string.IsNullOrWhiteSpace(stderr)) Console.WriteLine(stderr);
+            logger.LogDebug("{Stdout}", stdout);
+        }
+
+        if (!string.IsNullOrWhiteSpace(stderr))
+        {
+            logger.LogDebug("{StdErr}", stderr);
         }
 
         if (p.ExitCode != 0)
@@ -337,4 +341,7 @@ internal class BuildToolsService : IBuildToolsService
         public string Stdout { get; }
         public string Stderr { get; }
     }
+
+    [GeneratedRegex(@"^\d+\.\d+\.\d+\.\d+$")]
+    private static partial Regex VersionFolderRegex();
 }

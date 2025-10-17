@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.CommandLine;
 using System.CommandLine.Invocation;
 using Winsdk.Cli.Services;
@@ -40,7 +41,7 @@ internal class CreateDebugIdentityCommand : Command
         Options.Add(LocationOption);
     }
 
-    public class Handler(IMsixService msixService) : AsynchronousCommandLineAction
+    public class Handler(IMsixService msixService, ILogger<CreateDebugIdentityCommand> logger) : AsynchronousCommandLineAction
     {
         public override async Task<int> InvokeAsync(ParseResult parseResult, CancellationToken cancellationToken = default)
         {
@@ -48,26 +49,25 @@ internal class CreateDebugIdentityCommand : Command
             var manifest = parseResult.GetRequiredValue(ManifestOption);
             var noInstall = parseResult.GetValue(NoInstallOption);
             var location = parseResult.GetValue(LocationOption);
-            var verbose = parseResult.GetValue(WinSdkRootCommand.VerboseOption);
 
             if (!File.Exists(executablePath))
             {
-                Console.Error.WriteLine($"Executable not found: {executablePath}");
+                logger.LogError("Executable not found: {ExecutablePath}", executablePath);
                 return 1;
             }
 
             try
             {
-                var result = await msixService.AddMsixIdentityToExeAsync(executablePath, manifest, noInstall, location, verbose, cancellationToken);
+                var result = await msixService.AddMsixIdentityToExeAsync(executablePath, manifest, noInstall, location, cancellationToken);
 
-                Console.WriteLine("✅ MSIX identity added successfully!");
-                Console.WriteLine($"📦 Package: {result.PackageName}");
-                Console.WriteLine($"👤 Publisher: {result.Publisher}");
-                Console.WriteLine($"🆔 App ID: {result.ApplicationId}");
+                logger.LogInformation("✅ MSIX identity added successfully!");
+                logger.LogInformation("📦 Package: {PackageName}", result.PackageName);
+                logger.LogInformation("👤 Publisher: {Publisher}", result.Publisher);
+                logger.LogInformation("🆔 App ID: {ApplicationId}", result.ApplicationId);
             }
             catch (Exception error)
             {
-                Console.Error.WriteLine($"❌ Failed to add MSIX identity: {error.Message}");
+                logger.LogError("❌ Failed to add MSIX identity: {ErrorMessage}", error.Message);
                 return 1;
             }
 

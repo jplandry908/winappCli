@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.CommandLine;
 using System.CommandLine.Invocation;
 using Winsdk.Cli.Services;
@@ -21,11 +22,10 @@ internal class GetWinsdkPathCommand : Command
         Options.Add(GlobalOption);
     }
 
-    public class Handler(IWinsdkDirectoryService winsdkDirectoryService) : AsynchronousCommandLineAction
+    public class Handler(IWinsdkDirectoryService winsdkDirectoryService, ILogger<GetWinsdkPathCommand> logger) : AsynchronousCommandLineAction
     {
         public override Task<int> InvokeAsync(ParseResult parseResult, CancellationToken cancellationToken = default)
         {
-            var verbose = parseResult.GetValue(WinSdkRootCommand.VerboseOption);
             var global = parseResult.GetValue(GlobalOption);
 
             try
@@ -48,46 +48,30 @@ internal class GetWinsdkPathCommand : Command
                 
                 if (string.IsNullOrEmpty(winsdkDir))
                 {
-                    if (verbose)
-                    {
-                        Console.Error.WriteLine($"❌ {directoryType} .winsdk directory path could not be determined");
-                    }
+                    logger.LogError("❌ {DirectoryType} .winsdk directory path could not be determined", directoryType);
                     return Task.FromResult(1);
                 }
 
                 // For global directories, check if they exist
                 if (global && !Directory.Exists(winsdkDir))
                 {
-                    if (verbose)
-                    {
-                        Console.Error.WriteLine($"❌ {directoryType} .winsdk directory not found: {winsdkDir}");
-                        Console.Error.WriteLine($"   Make sure to run 'winsdk init' first");
-                    }
+                    logger.LogError("❌ {DirectoryType} .winsdk directory not found: {WinsdkDir}", directoryType, winsdkDir);
+                    logger.LogError("   Make sure to run 'winsdk init' first");
                     return Task.FromResult(1);
                 }
 
                 // Output just the path for easy consumption by scripts
-                Console.WriteLine(winsdkDir);
-                
-                if (verbose)
-                {
-                    var exists = Directory.Exists(winsdkDir);
-                    var status = exists ? "exists" : "does not exist";
-                    Console.Error.WriteLine($"📂 {directoryType} .winsdk directory: {winsdkDir} ({status})");
-                }
+                logger.LogInformation("{WinSdkDir}", winsdkDir);
+
+                var exists = Directory.Exists(winsdkDir);
+                var status = exists ? "exists" : "does not exist";
+                logger.LogDebug("📂 {DirectoryType} .winsdk directory: {WinsdkDir} ({Status})", directoryType, winsdkDir, status);
 
                 return Task.FromResult(0);
             }
             catch (Exception ex)
             {
-                if (verbose)
-                {
-                    Console.Error.WriteLine($"❌ Error getting {(global ? "global" : "local")} winsdk directory: {ex.Message}");
-                }
-                else
-                {
-                    Console.Error.WriteLine($"{(global ? "Global" : "Local")} winsdk directory not found");
-                }
+                logger.LogError("❌ Error getting {DirectoryType} winsdk directory: {ErrorMessage}", (global ? "global" : "local"), ex.Message);
                 return Task.FromResult(1);
             }
         }

@@ -38,4 +38,8 @@ internal static class UiSymbols
     public static string Search => UseEmoji ? "🔎" : "[SCAN]";
     public static string Save => UseEmoji ? "💾" : "[SAVE]";
     public static string Party => UseEmoji ? "🎉" : "[DONE]";
+    public static string Warning => UseEmoji ? "⚠️" : "[WARN]";
+    public static string Trash => UseEmoji ? "🗑️" : "[DEL]";
+    public static string Sync => UseEmoji ? "🔄" : "[SYNC]";
+    public static string Add => UseEmoji ? "➕" : "[ADD]";
 }

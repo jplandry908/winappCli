@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using System.Text;
 using Winsdk.Cli.Commands;
 using Winsdk.Cli.Helpers;
@@ -19,10 +20,37 @@ internal static class Program
         {
             // ignore
         }
+        
+        var minimumLogLevel = LogLevel.Information;
+        bool quiet = false;
+        bool verbose = false;
+
+        if (args.Contains(WinSdkRootCommand.VerboseOption.Name) || args.Any(WinSdkRootCommand.VerboseOption.Aliases.Contains))
+        {
+            minimumLogLevel = LogLevel.Debug;
+            verbose = true;
+        }
+        else if (args.Contains(WinSdkRootCommand.QuietOption.Name) || args.Any(WinSdkRootCommand.QuietOption.Aliases.Contains))
+        {
+            minimumLogLevel = LogLevel.Warning;
+            quiet = true;
+        }
+
+        if (quiet && verbose)
+        {
+            Console.Error.WriteLine($"Cannot specify both --quiet and --verbose options together.");
+            return 1;
+        }
 
         var services = new ServiceCollection()
             .ConfigureServices()
-            .ConfigureCommands();
+            .ConfigureCommands()
+            .AddLogging(b =>
+            {
+                b.ClearProviders();
+                b.AddTextWriterLogger(Console.Out, Console.Error);
+                b.SetMinimumLevel(minimumLogLevel);
+            });
 
         using var serviceProvider = services.BuildServiceProvider();
 

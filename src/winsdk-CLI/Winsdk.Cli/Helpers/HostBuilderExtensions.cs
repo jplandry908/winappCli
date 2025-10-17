@@ -17,6 +17,7 @@ internal static class StoreHostBuilderExtensions
             .AddSingleton<IConfigService, ConfigService>()
             .AddSingleton<ICppWinrtService, CppWinrtService>()
             .AddSingleton<IDevModeService, DevModeService>()
+            .AddSingleton<IManifestTemplateService, ManifestTemplateService>()
             .AddSingleton<IManifestService, ManifestService>()
             .AddSingleton<IMsixService, MsixService>()
             .AddSingleton<INugetService, NugetService>()
@@ -25,7 +26,8 @@ internal static class StoreHostBuilderExtensions
             .AddSingleton<IPackageLayoutService, PackageLayoutService>()
             .AddSingleton<IPowerShellService, PowerShellService>()
             .AddSingleton<IWinsdkDirectoryService, WinsdkDirectoryService>()
-            .AddSingleton<IWorkspaceSetupService, WorkspaceSetupService>();
+            .AddSingleton<IWorkspaceSetupService, WorkspaceSetupService>()
+            .AddSingleton<IGitignoreService, GitignoreService>();
     }
 
     public static IServiceCollection ConfigureCommands(this IServiceCollection serviceCollection)
@@ -57,6 +59,7 @@ internal static class StoreHostBuilderExtensions
             {
                 var command = ActivatorUtilities.CreateInstance<TCommand>(sp);
                 command.Options.Add(WinSdkRootCommand.VerboseOption);
+                command.Options.Add(WinSdkRootCommand.QuietOption);
                 command.SetAction((parseResult, ct) => sp.GetRequiredService<THandler>().InvokeAsync(parseResult, ct));
                 return command;
             });
@@ -69,7 +72,6 @@ internal static class StoreHostBuilderExtensions
             .AddSingleton(sp =>
             {
                 var command = ActivatorUtilities.CreateInstance<TCommand>(sp);
-                command.Options.Add(WinSdkRootCommand.VerboseOption);
                 return command;
             });
     }

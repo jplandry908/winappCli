@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.CommandLine;
 using System.CommandLine.Invocation;
 using Winsdk.Cli.Services;
@@ -40,7 +41,7 @@ internal class SignCommand : Command
         Options.Add(TimestampOption);
     }
 
-    public class Handler(ICertificateService certificateService) : AsynchronousCommandLineAction
+    public class Handler(ICertificateService certificateService, ILogger<RestoreCommand> logger) : AsynchronousCommandLineAction
     {
         public override async Task<int> InvokeAsync(ParseResult parseResult, CancellationToken cancellationToken = default)
         {
@@ -48,23 +49,22 @@ internal class SignCommand : Command
             var certPath = parseResult.GetRequiredValue(CertPathArgument);
             var password = parseResult.GetValue(PasswordOption);
             var timestamp = parseResult.GetValue(TimestampOption);
-            var verbose = parseResult.GetValue(WinSdkRootCommand.VerboseOption);
 
             try
             {
-                await certificateService.SignFileAsync(filePath, certPath, password, timestamp, verbose, cancellationToken);
+                await certificateService.SignFileAsync(filePath, certPath, password, timestamp, cancellationToken);
 
-                Console.WriteLine($"🔐 Signed file: {filePath}");
+                logger.LogInformation("🔐 Signed file: {FilePath}", filePath);
                 return 0;
             }
             catch (InvalidOperationException error)
             {
-                Console.Error.WriteLine(error.Message);
+                logger.LogError("{ErrorMessage}", error.Message);
                 return 1;
             }
             catch (Exception error)
             {
-                Console.Error.WriteLine($"❌ Failed to sign file: {error.Message}");
+                logger.LogError("❌ Failed to sign file: {ErrorMessage}", error.Message);
                 return 1;
             }
         }

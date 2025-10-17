@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.Reflection;
 using System.Text;
 
@@ -6,7 +7,7 @@ namespace Winsdk.Cli.Services;
 /// <summary>
 /// Shared service for manifest template operations and utilities
 /// </summary>
-internal static class ManifestTemplateService
+internal class ManifestTemplateService(ILogger<ManifestTemplateService> logger) : IManifestTemplateService
 {
     private static readonly char[] WordSeparators = [' ', '-', '_'];
 
@@ -30,7 +31,9 @@ internal static class ManifestTemplateService
     public static string ToCamelCase(string input)
     {
         if (string.IsNullOrEmpty(input))
+        {
             return input;
+        }
 
         var words = input.Split(WordSeparators, StringSplitOptions.RemoveEmptyEntries);
         var result = new StringBuilder();
@@ -138,9 +141,8 @@ internal static class ManifestTemplateService
     /// Generates default MSIX assets from embedded resources
     /// </summary>
     /// <param name="outputDirectory">Directory to generate assets in</param>
-    /// <param name="verbose">Enable verbose output</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    public static async Task GenerateDefaultAssetsAsync(string outputDirectory, bool verbose = false, CancellationToken cancellationToken = default)
+    private async Task GenerateDefaultAssetsAsync(string outputDirectory, CancellationToken cancellationToken = default)
     {
         var assetsDir = Path.Combine(outputDirectory, "Assets");
         Directory.CreateDirectory(assetsDir);
@@ -161,10 +163,7 @@ internal static class ManifestTemplateService
             await using var fs = File.Create(target);
             await s.CopyToAsync(fs, cancellationToken);
             
-            if (verbose)
-            {
-                Console.WriteLine($"✓ Generated asset: {fileName}");
-            }
+            logger.LogDebug("✓ Generated asset: {FileName}", fileName);
         }
     }
 
@@ -178,10 +177,8 @@ internal static class ManifestTemplateService
     /// <param name="executable">Executable name (null for auto-generated from package name)</param>
     /// <param name="sparse">Whether to generate sparse package manifest</param>
     /// <param name="description">Description for manifest</param>
-    /// <param name="verbose">Whether to output verbose information</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Generated manifest content</returns>
-    public static async Task GenerateCompleteManifestAsync(
+    public async Task GenerateCompleteManifestAsync(
         string outputDirectory,
         string packageName,
         string publisherName, 
@@ -189,21 +186,17 @@ internal static class ManifestTemplateService
         string executable,
         bool sparse,
         string description,
-        bool verbose = false,
         CancellationToken cancellationToken = default)
     {
         // Normalize publisher name
         publisherName = StripCnPrefix(NormalizePublisher(publisherName));
 
-        if (verbose)
-        {
-            Console.WriteLine($"Package name: {packageName}");
-            Console.WriteLine($"Publisher: {publisherName}");
-            Console.WriteLine($"Version: {version}");
-            Console.WriteLine($"Description: {description}");
-            Console.WriteLine($"Executable: {executable}");
-            Console.WriteLine($"Sparse: {sparse}");
-        }
+        logger.LogDebug("Package name: {PackageName}", packageName);
+        logger.LogDebug("Publisher: {PublisherName}", publisherName);
+        logger.LogDebug("Version: {Version}", version);
+        logger.LogDebug("Description: {Description}", description);
+        logger.LogDebug("Executable: {ExecutableName}", executable);
+        logger.LogDebug("Sparse: {Sparse}", sparse);
 
         // Create output directory if needed
         Directory.CreateDirectory(outputDirectory);
@@ -225,6 +218,6 @@ internal static class ManifestTemplateService
         await File.WriteAllTextAsync(manifestPath, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), cancellationToken);
 
         // Generate default assets
-        await GenerateDefaultAssetsAsync(outputDirectory, verbose, cancellationToken);
+        await GenerateDefaultAssetsAsync(outputDirectory, cancellationToken);
     }
 }

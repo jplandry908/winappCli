@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.CommandLine;
 using System.CommandLine.Invocation;
 using Winsdk.Cli.Services;
@@ -6,34 +7,23 @@ namespace Winsdk.Cli.Commands;
 
 internal class ToolCommand : Command
 {
-    public static Option<bool> QuietOption { get; }
-
-    static ToolCommand()
-    {
-        QuietOption = new Option<bool>("--quiet", "-q")
-        {
-            Description = "Suppress progress messages during auto-installation"
-        };
-    }
     public ToolCommand() : base("tool", "Run a build tool command with Windows SDK paths")
     {
         Aliases.Add("run-buildtool");
         this.TreatUnmatchedTokensAsErrors = false;
-        Options.Add(QuietOption);
     }
 
-    public class Handler(IBuildToolsService buildToolsService) : AsynchronousCommandLineAction
+    public class Handler(IBuildToolsService buildToolsService, ILogger<ToolCommand> logger) : AsynchronousCommandLineAction
     {
         public override async Task<int> InvokeAsync(ParseResult parseResult, CancellationToken cancellationToken = default)
         {
             var args = parseResult.UnmatchedTokens.ToArray();
-            var quiet = parseResult.GetValue(QuietOption);
 
             if (args.Length == 0)
             {
-                Console.Error.WriteLine("No build tool command specified.");
-                Console.Error.WriteLine($"Usage: winsdk tool [--quiet] <command> [args...]");
-                Console.Error.WriteLine($"Example: winsdk tool makeappx.exe pack /o /d \"./msix\" /nv /p \"./dist/app.msix\"");
+                logger.LogError("No build tool command specified.");
+                logger.LogError("Usage: winsdk tool [--quiet] <command> [args...]");
+                logger.LogError("Example: winsdk tool makeappx.exe pack /o /d \"./msix\" /nv /p \"./dist/app.msix\"");
                 return 1;
             }
 
@@ -43,7 +33,7 @@ internal class ToolCommand : Command
             try
             {
                 // Ensure the build tool is available, installing BuildTools if necessary
-                var toolPath = await buildToolsService.EnsureBuildToolAvailableAsync(toolName, quiet: quiet, cancellationToken: cancellationToken);
+                var toolPath = await buildToolsService.EnsureBuildToolAvailableAsync(toolName, cancellationToken: cancellationToken);
 
                 var processStartInfo = new System.Diagnostics.ProcessStartInfo
                 {
@@ -58,19 +48,25 @@ internal class ToolCommand : Command
                 using var process = System.Diagnostics.Process.Start(processStartInfo);
                 if (process == null)
                 {
-                    Console.Error.WriteLine($"Failed to start process for '{toolName}'.");
+                    logger.LogError("Failed to start process for '{ToolName}'.", toolName);
                     return 1;
                 }
 
                 process.OutputDataReceived += (sender, e) =>
                 {
                     if (e.Data != null)
+                    {
+                        // Todo: log into stream instead of directly to console
                         Console.Out.WriteLine(e.Data);
+                    }
                 };
                 process.ErrorDataReceived += (sender, e) =>
                 {
                     if (e.Data != null)
+                    {
+                        // Todo: log into stream instead of directly to console
                         Console.Error.WriteLine(e.Data);
+                    }
                 };
 
                 process.BeginOutputReadLine();
@@ -80,21 +76,21 @@ internal class ToolCommand : Command
             }
             catch (FileNotFoundException ex)
             {
-                Console.Error.WriteLine($"Could not find '{toolName}' in the Windows SDK Build Tools.");
-                Console.Error.WriteLine($"Error: {ex.Message}");
-                Console.Error.WriteLine($"Usage: winsdk tool [--quiet] <command> [args...]");
-                Console.Error.WriteLine($"Example: winsdk tool makeappx.exe pack /o /d \"./msix\" /nv /p \"./dist/app.msix\"");
+                logger.LogError("Could not find '{ToolName}' in the Windows SDK Build Tools.", toolName);
+                logger.LogError("Error: {ErrorMessage}", ex.Message);
+                logger.LogError("Usage: winsdk tool [--quiet] <command> [args...]");
+                logger.LogError("Example: winsdk tool makeappx.exe pack /o /d \"./msix\" /nv /p \"./dist/app.msix\"");
                 return 1;
             }
             catch (InvalidOperationException ex)
             {
-                Console.Error.WriteLine($"Could not install or find Windows SDK Build Tools.");
-                Console.Error.WriteLine($"Error: {ex.Message}");
+                logger.LogError("Could not install or find Windows SDK Build Tools.");
+                logger.LogError("Error: {ErrorMessage}", ex.Message);
                 return 1;
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"Error executing '{toolName}': {ex.Message}");
+                logger.LogError("Error executing '{ToolName}': {ErrorMessage}", toolName, ex.Message);
                 return 1;
             }
         }

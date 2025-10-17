@@ -1,16 +1,16 @@
+using Microsoft.Extensions.Logging;
 using Winsdk.Cli.Helpers;
 
 namespace Winsdk.Cli.Services;
 
-internal static class GitignoreService
+internal class GitignoreService(ILogger<GitignoreService> logger) : IGitignoreService
 {
     /// <summary>
     /// Update .gitignore to exclude .winsdk folder
     /// </summary>
     /// <param name="projectDirectory">Directory containing the project</param>
-    /// <param name="verbose">Whether to log progress messages</param>
     /// <returns>True if gitignore was updated, false if entry already existed</returns>
-    public static bool UpdateGitignore(string projectDirectory, bool verbose = true)
+    public bool UpdateGitignore(string projectDirectory)
     {
         try
         {
@@ -33,13 +33,13 @@ internal static class GitignoreService
             {
                 // Add entries to .gitignore
                 var newContent = gitignoreContent;
-                
+
                 // Ensure we have a newline before our section if file exists and doesn't end with newline
                 if (gitignoreExists && !gitignoreContent.EndsWith('\n') && !string.IsNullOrEmpty(gitignoreContent))
                 {
                     newContent += '\n';
                 }
-                
+
                 // Add our section
                 newContent += '\n';
                 newContent += "# Windows SDK packages and generated files\n";
@@ -47,32 +47,23 @@ internal static class GitignoreService
 
                 File.WriteAllText(gitignorePath, newContent);
 
-                if (verbose)
-                {
-                    Console.WriteLine($"{UiSymbols.Check} Added .winsdk to .gitignore");
-                    Console.WriteLine($"{UiSymbols.Note} Note: winsdk.yaml should be committed to track SDK versions");
-                }
+                logger.LogDebug("{UISymbol} Added .winsdk to .gitignore", UiSymbols.Check);
+                logger.LogDebug("{UISymbol} Note: winsdk.yaml should be committed to track SDK versions", UiSymbols.Note);
 
                 return true;
             }
-            else if (verbose)
+            else
             {
-                Console.WriteLine($"{UiSymbols.Skip} .winsdk already exists in .gitignore");
+                logger.LogDebug("{UISymbol} .winsdk already exists in .gitignore", UiSymbols.Skip);
             }
 
-            if (verbose)
-            {
-                Console.WriteLine($"{UiSymbols.Note} Note: winsdk.yaml should be committed to track SDK versions");
-            }
+            logger.LogDebug("{UISymbol} Note: winsdk.yaml should be committed to track SDK versions", UiSymbols.Note);
 
             return false;
         }
         catch (Exception ex)
         {
-            if (verbose)
-            {
-                Console.WriteLine($"⚠️  Could not update .gitignore: {ex.Message}");
-            }
+            logger.LogDebug("{UISymbol} Could not update .gitignore: {Message}", UiSymbols.Warning, ex.Message);
             return false;
         }
     }
@@ -82,9 +73,8 @@ internal static class GitignoreService
     /// </summary>
     /// <param name="projectDirectory">Directory containing the project</param>
     /// <param name="certificateFileName">Name of the certificate file to add</param>
-    /// <param name="verbose">Whether to log progress messages</param>
     /// <returns>True if gitignore was updated, false if entry already existed</returns>
-    public static bool AddCertificateToGitignore(string projectDirectory, string certificateFileName, bool verbose = true)
+    public bool AddCertificateToGitignore(string projectDirectory, string certificateFileName)
     {
         try
         {
@@ -106,13 +96,13 @@ internal static class GitignoreService
             {
                 // Add certificate entry to .gitignore
                 var newContent = gitignoreContent;
-                
+
                 // Ensure we have a newline before our entry if file exists and doesn't end with newline
                 if (gitignoreExists && !gitignoreContent.EndsWith('\n') && !string.IsNullOrEmpty(gitignoreContent))
                 {
                     newContent += '\n';
                 }
-                
+
                 // Add certificate entry with comment
                 newContent += '\n';
                 newContent += "# Development certificate\n";
@@ -120,26 +110,20 @@ internal static class GitignoreService
 
                 File.WriteAllText(gitignorePath, newContent);
 
-                if (verbose)
-                {
-                    Console.WriteLine($"{UiSymbols.Check} Added {certificateFileName} to .gitignore");
-                }
+                logger.LogDebug("{UISymbol} Added {CertificateFileName} to .gitignore", UiSymbols.Check, certificateFileName);
 
                 return true;
             }
-            else if (verbose)
+            else
             {
-                Console.WriteLine($"{UiSymbols.Skip} {certificateFileName} already exists in .gitignore");
+                logger.LogDebug("{UISymbol} {CertificateFileName} already exists in .gitignore", UiSymbols.Skip, certificateFileName);
             }
 
             return false;
         }
         catch (Exception ex)
         {
-            if (verbose)
-            {
-                Console.WriteLine($"⚠️  Could not update .gitignore: {ex.Message}");
-            }
+            logger.LogDebug("{UISymbol} Could not update .gitignore: {Message}", UiSymbols.Warning, ex.Message);
             return false;
         }
     }
