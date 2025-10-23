@@ -3,6 +3,8 @@ const path = require('node:path');
 
 const addon = require('../addon/build/Release/addon.node');
 
+const csAddon = require('../csAddon/build/Release/csAddon.node');
+
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
   app.quit();
@@ -47,5 +49,6 @@ app.on('window-all-closed', () => {
 });
 
 ipcMain.handle('show-notification', async (event, title, body) => {
+  body = body + "... and " + csAddon.Addon.hello("Electron");
   addon.showNotification(title, body);
 });

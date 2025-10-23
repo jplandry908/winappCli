@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const { generateAddonFiles } = require('./addon-utils');
+const { generateCsAddonFiles } = require('./cs-addon-utils');
 const { addElectronDebugIdentity } = require('./msix-utils');
 const { getWinsdkCliPath, callWinsdkCli } = require('./winsdk-cli-utils');
 const { spawn } = require('child_process');
@@ -103,10 +104,12 @@ async function showCombinedHelp() {
   console.log('');
   console.log('Node.js Subcommands:');
   console.log('  node create-addon         Generate native addon files for Electron');
+  console.log('  node create-cs-addon      Generate C# addon files for Electron');
   console.log('  node add-electron-debug-identity  Add MSIX identity to Electron debug process');
   console.log('');
   console.log('Examples:');
   console.log(`  ${CLI_NAME} node create-addon --name myAddon`);
+  console.log(`  ${CLI_NAME} node create-cs-addon --name MyCsAddon`);
   console.log(`  ${CLI_NAME} node add-electron-debug-identity`);
 }
 
@@ -166,10 +169,12 @@ async function handleNode(args) {
     console.log('');
     console.log('Subcommands:');
     console.log('  create-addon                Generate native addon files for Electron');
+    console.log('  create-cs-addon             Generate C# addon files for Electron');
     console.log('  add-electron-debug-identity Add MSIX identity to Electron debug process');
     console.log('');
     console.log('Examples:');
     console.log(`  ${CLI_NAME} node create-addon --name myAddon`);
+    console.log(`  ${CLI_NAME} node create-cs-addon --name myCsAddon`);
     console.log(`  ${CLI_NAME} node add-electron-debug-identity`);
     console.log('');
     console.log(`Use "${CLI_NAME} node <subcommand> --help" for detailed help on each subcommand.`);
@@ -182,6 +187,10 @@ async function handleNode(args) {
   switch (subcommand) {
     case 'create-addon':
       await handleCreateAddon(subcommandArgs);
+      break;
+      
+    case 'create-cs-addon':
+      await handleCreateCsAddon(subcommandArgs);
       break;
       
     case 'add-electron-debug-identity':
@@ -240,6 +249,66 @@ async function handleCreateAddon(args) {
     console.log(`       "const ${result.addonName} = require('./${result.addonName}/build/Release/${result.addonName}.node')";`);
   } catch (error) {
     console.error(`❌ Failed to generate addon files: ${error.message}`);
+    process.exit(1);
+  }
+}
+
+async function handleCreateCsAddon(args) {
+  const options = parseArgs(args, {
+    name: 'csAddon',
+    verbose: true
+  });
+
+  if (options.help) {
+    console.log(`Usage: ${CLI_NAME} node create-cs-addon [options]`);
+    console.log('');
+    console.log('Generate C# addon files for Electron project');
+    console.log('');
+    console.log('This command will:');
+    console.log('  1. Create a new C# addon directory with template files');
+    console.log('  2. Generate a .csproj file and addon.cs with sample code');
+    console.log('  3. Install node-api-dotnet package');
+    console.log('  4. Add build scripts to package.json');
+    console.log('  5. Update .gitignore with C# build artifacts');
+    console.log('');
+    console.log('Options:');
+    console.log('  --name <name>         Addon name (default: csAddon)');
+    console.log('                        Must be a valid C# namespace/class name');
+    console.log('  --verbose             Enable verbose output (default: true)');
+    console.log('  --help                Show this help');
+    console.log('');
+    console.log('Examples:');
+    console.log(`  ${CLI_NAME} node create-cs-addon`);
+    console.log(`  ${CLI_NAME} node create-cs-addon --name MyWindowsAddon`);
+    console.log('');
+    console.log('Requirements:');
+    console.log('  - .NET 8.0 SDK or later must be installed');
+    console.log('  - Command must be run from the root of an Electron project');
+    console.log('    (directory containing package.json)');
+    console.log('');
+    console.log('After creation:');
+    console.log('  - Build with: npm run build-<name>');
+    console.log('  - Clean with: npm run clean-<name>');
+    console.log('  - Import in JavaScript:');
+    console.log('      const dotnet = require(\'node-api-dotnet\');');
+    console.log('      const module = dotnet.require(\'./build/Release/<name>\');');
+    return;
+  }
+
+  try {
+    const result = await generateCsAddonFiles({
+      name: options.name,
+      verbose: options.verbose
+    });
+
+    console.log(`✅ C# addon '${result.addonName}' created successfully!`);
+    console.log(`📁 ${result.addonPath}`);
+    console.log('');
+    console.log(`Next steps:`);
+    console.log(`  1. npm run build-${result.addonName}`);
+    console.log(`  2. See ${result.addonName}/README.md for usage examples`);
+  } catch (error) {
+    console.error(`❌ Failed to generate C# addon files: ${error.message}`);
     process.exit(1);
   }
 }
