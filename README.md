@@ -13,6 +13,8 @@
   <span> . </span>
   <a href="./docs/usage.md">Documentation</a>
   <span> . </span>
+  <a href="">GUI (Experimental)</a>
+  <span> . </span>
   <a href="#feedback">Feedback</a>
 </h3>
 <br/><br/>
@@ -51,8 +53,7 @@ The easiest way to use the CLI is to download automated nightly build from GitHu
 
 The easiest way to use the CLI globally is to add it to the PATH. **Add to Path**:
 
- Windows Search → Edit the system environment variables → Environment Variables → Path → Edit → New → Add the location (folder) of WinSdk.cli.exe
-
+Windows Search → Edit the system environment variables → Environment Variables → Path → Edit → New → Add the location (folder) of WinSdk.cli.exe
 
 ## 📋 Usage
 
@@ -98,6 +99,35 @@ npx winsdk --help
 - [`node add-electron-debug-identity`](./docs/usage.md#node-add-electron-debug-identity) - Add identity to Electron processes
 
 The full CLI usage can be found here: [Documentation](/docs/usage.md)
+
+## 🧪 Windows Identity Tool
+
+This is an experimental app (GUI) that wraps the CLI and provides an intuitive, drag-and-drop experience with the following features:
+
+- Supports .NET (Winforms, WPF..etc) apps, Python scripts/folders, MSIX
+- Drop in a WinForms, WPF executable (.exe) to add development/debug app identity (via external location/sparse packaging) in a single click!
+- Drop in a WinForms, WPF folder to package your app (MSIX) in a single click
+- Drop in an MSIX to sign and register it locally in a single click
+- Drop in a Python (.py) file to add debug identity in a single click
+
+<div align="center">
+  <table>
+    <tr>
+      <td width="50%">
+        <img src="./docs/images/identity-gui-tool.png" alt="Windows Identity Tool Interface" width="100%" />
+      </td>
+      <td width="50%">
+        <img src="./docs/images/identity-gui-tool-options.png" alt="Windows Identity Tool Options" width="100%" />
+      </td>
+    </tr>
+  </table>
+</div>
+
+### Install the GUI Tool
+
+**[👉 Download Latest Build (.exe)](https://github.com/microsoft/winsdk/releases/latest)**
+
+Alternatively, you can clone and build this repository. Run Identity.GUI.Experimental in Visual Studio to build and run the app.
 
 ## Feedback
 
