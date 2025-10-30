@@ -9,7 +9,10 @@ module.exports = {
     ignore: [
       /^\/\.winsdk($|\/)/,
       /\.pfx$/,
-      /^\/winsdk\.yaml$/
+      /\.pdb$/,
+      /^\/winsdk\.yaml$/,
+      /\/obj($|\/)/,
+      /\/bin($|\/)/
     ]
   },
   rebuildConfig: {},
