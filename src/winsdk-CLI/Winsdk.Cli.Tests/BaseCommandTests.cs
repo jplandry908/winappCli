@@ -7,14 +7,18 @@ using Winsdk.Cli.Helpers;
 
 namespace Winsdk.Cli.Tests;
 
-public class BaseCommandTests : IDisposable
+public class BaseCommandTests
 {
-    private ServiceProvider _serviceProvider;
-    protected StringWriter ConsoleStdOut { get; } = new StringWriter();
-    protected StringWriter ConsoleStdErr { get; } = new StringWriter();
+    private ServiceProvider _serviceProvider = null!;
+    protected StringWriter ConsoleStdOut { private set; get; } = null!;
+    protected StringWriter ConsoleStdErr { private set; get; } = null!;
 
-    public BaseCommandTests()
+    [TestInitialize]
+    public void SetupBase()
     {
+        ConsoleStdOut = new StringWriter();
+        ConsoleStdErr = new StringWriter();
+
         var services = new ServiceCollection()
             .ConfigureServices()
             .ConfigureCommands()
@@ -28,12 +32,12 @@ public class BaseCommandTests : IDisposable
         _serviceProvider = services.BuildServiceProvider();
     }
 
-    public void Dispose()
+    [TestCleanup]
+    public void CleanupBase()
     {
         _serviceProvider?.Dispose();
         ConsoleStdOut?.Dispose();
         ConsoleStdErr?.Dispose();
-        GC.SuppressFinalize(this);
     }
 
     protected T GetRequiredService<T>() where T : notnull

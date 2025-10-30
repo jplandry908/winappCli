@@ -9,8 +9,8 @@ namespace Winsdk.Cli.Commands;
 
 internal class InitCommand : Command
 {
-    public static Argument<string> BaseDirectoryArgument { get; }
-    public static Option<string> ConfigDirOption { get; }
+    public static Argument<DirectoryInfo> BaseDirectoryArgument { get; }
+    public static Option<DirectoryInfo> ConfigDirOption { get; }
     public static Option<bool> PrereleaseOption { get; }
     public static Option<bool> IgnoreConfigOption { get; }
     public static Option<bool> NoGitignoreOption { get; }
@@ -20,16 +20,18 @@ internal class InitCommand : Command
 
     static InitCommand()
     {
-        BaseDirectoryArgument = new Argument<string>("base-directory")
+        BaseDirectoryArgument = new Argument<DirectoryInfo>("base-directory")
         {
             Description = "Base/root directory for the winsdk workspace, for consumption or installation.",
             Arity = ArgumentArity.ZeroOrOne
         };
-        ConfigDirOption = new Option<string>("--config-dir")
+        BaseDirectoryArgument.AcceptExistingOnly();
+        ConfigDirOption = new Option<DirectoryInfo>("--config-dir")
         {
             Description = "Directory to read/store configuration (default: current directory)",
-            DefaultValueFactory = (argumentResult) => Directory.GetCurrentDirectory()
+            DefaultValueFactory = (argumentResult) => new DirectoryInfo(Directory.GetCurrentDirectory())
         };
+        ConfigDirOption.AcceptExistingOnly();
         PrereleaseOption = new Option<bool>("--prerelease")
         {
             Description = "Include prerelease packages from NuGet"
@@ -83,7 +85,7 @@ internal class InitCommand : Command
 
             var options = new WorkspaceSetupOptions
             {
-                BaseDirectory = baseDirectory ?? Directory.GetCurrentDirectory(),
+                BaseDirectory = baseDirectory ?? new DirectoryInfo(Directory.GetCurrentDirectory()),
                 ConfigDir = configDir,
                 IncludeExperimental = prerelease,
                 IgnoreConfig = ignoreConfig,

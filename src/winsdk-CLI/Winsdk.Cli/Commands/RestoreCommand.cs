@@ -9,21 +9,23 @@ namespace Winsdk.Cli.Commands;
 
 internal class RestoreCommand : Command
 {
-    public static Argument<string> BaseDirectoryArgument { get; }
-    public static Option<string> ConfigDirOption { get; }
+    public static Argument<DirectoryInfo> BaseDirectoryArgument { get; }
+    public static Option<DirectoryInfo> ConfigDirOption { get; }
     static RestoreCommand()
     {
-        BaseDirectoryArgument = new Argument<string>("base-directory")
+        BaseDirectoryArgument = new Argument<DirectoryInfo>("base-directory")
         {
             Description = "Base/root directory for the winsdk workspace",
             Arity = ArgumentArity.ZeroOrOne
         };
+        BaseDirectoryArgument.AcceptExistingOnly();
 
-        ConfigDirOption = new Option<string>("--config-dir")
+        ConfigDirOption = new Option<DirectoryInfo>("--config-dir")
         {
             Description = "Directory to read configuration from (default: current directory)",
-            DefaultValueFactory = (argumentResult) => Directory.GetCurrentDirectory()
+            DefaultValueFactory = (argumentResult) => new DirectoryInfo(Directory.GetCurrentDirectory())
         };
+        ConfigDirOption.AcceptExistingOnly();
     }
 
     public RestoreCommand() : base("restore", "Restore packages from winsdk.yaml and ensure workspace is ready")
@@ -41,7 +43,7 @@ internal class RestoreCommand : Command
 
             var options = new WorkspaceSetupOptions
             {
-                BaseDirectory = baseDirectory ?? Directory.GetCurrentDirectory(),
+                BaseDirectory = baseDirectory ?? new DirectoryInfo(Directory.GetCurrentDirectory()),
                 ConfigDir = configDir,
                 RequireExistingConfig = true,
                 ForceLatestBuildTools = false // Will be determined from config

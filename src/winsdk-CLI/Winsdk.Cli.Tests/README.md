@@ -7,7 +7,6 @@ This test project provides comprehensive unit tests for the Winsdk CLI applicati
 ### Test Files
 
 - **`SignCommandTests.cs`** - Main test class testing the `sign` command functionality
-- **`TestCertificateUtils.cs`** - Utility class for certificate operations and signature verification
 - **`GlobalTestSetup.cs`** - Global test initialization and cleanup
 
 ### Key Features Tested

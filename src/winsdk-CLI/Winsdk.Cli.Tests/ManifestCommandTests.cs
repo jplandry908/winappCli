@@ -97,6 +97,9 @@ public class ManifestCommandTests : BaseCommandTests
     [TestMethod]
     public async Task ManifestGenerateCommandWithCustomOptionsShouldUseThoseValues()
     {
+        var exeFilePath = Path.Combine(_tempDirectory, "TestApp.exe");
+        await File.WriteAllTextAsync(exeFilePath, "fake exe content");
+
         // Arrange
         var generateCommand = GetRequiredService<ManifestGenerateCommand>();
         var args = new[]
@@ -106,7 +109,7 @@ public class ManifestCommandTests : BaseCommandTests
             "--publisher-name", "CN=TestPublisher",
             "--version", "2.0.0.0",
             "--description", "Test Application",
-            "--entrypoint", "TestApp.exe",
+            "--entrypoint", exeFilePath,
             "--yes" // Skip interactive prompts
         };
 
@@ -211,20 +214,23 @@ public class ManifestCommandTests : BaseCommandTests
     }
 
     [TestMethod]
-    public void ManifestGenerateCommandParseArgumentsShouldHandleAllOptions()
+    public async Task ManifestGenerateCommandParseArgumentsShouldHandleAllOptions()
     {
+        var exeFilePath = Path.Combine(_tempDirectory, "app.exe");
+        await File.WriteAllTextAsync(exeFilePath, "fake exe content");
+
         // Arrange
         var generateCommand = GetRequiredService<ManifestGenerateCommand>();
         var args = new[]
         {
-            "/test/directory",
+            _tempDirectory,
             "--package-name", "TestPkg",
             "--publisher-name", "CN=TestPub",
             "--version", "1.2.3.4",
             "--description", "Test Description",
-            "--entrypoint", "test.exe",
+            "--entrypoint", exeFilePath,
             "--template", "sparse",
-            "--logo-path", "/test/logo.png",
+            "--logo-path", _testLogoPath,
             "--yes",
             "--verbose"
         };
@@ -369,7 +375,7 @@ public class ManifestCommandTests : BaseCommandTests
         {
             _tempDirectory,
             "--template", "hostedapp",
-            "--entrypoint", "app.py"
+            "--entrypoint", pythonScriptPath
         };
 
         // Act
@@ -405,7 +411,7 @@ public class ManifestCommandTests : BaseCommandTests
         {
             _tempDirectory,
             "--template", "hostedapp",
-            "--entrypoint", "app.py"
+            "--entrypoint", pythonScriptPath
         };
 
         var generateParseResult = generateCommand.Parse(generateArgs);
@@ -443,7 +449,7 @@ public class ManifestCommandTests : BaseCommandTests
         {
             _tempDirectory,
             "--template", "hostedapp",
-            "--entrypoint", "app.js"
+            "--entrypoint", jsScriptPath
         };
 
         // Act
