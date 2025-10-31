@@ -110,7 +110,7 @@ winapp update --prerelease
 
 ### pack
 
-Create MSIX packages from prepared application directories. Requires appxmanifest.xml file to be present in the target dirrectory, in the current directory, or passed with the `--manifest` option. (run `init` or `manifest generate` to create a manifest)
+Create MSIX packages from prepared application directories. Requires appxmanifest.xml file to be present in the target directory, in the current directory, or passed with the `--manifest` option. (run `init` or `manifest generate` to create a manifest)
 
 ```bash
 winapp pack <input-folder> [options]
@@ -135,7 +135,7 @@ winapp pack <input-folder> [options]
 
 **What it does:**
 
-- Validates and processes AppxManifest.xmls
+- Validates and processes AppxManifest.xml files
 - Ensures proper framework dependencies
 - Updates side-by-side manifests with registrations
 - Handles self-contained WinAppSDK deployment
@@ -150,7 +150,7 @@ winapp pack ./dist
 # Package with custom output name and certificate
 winapp pack ./dist --output MyApp.msix --cert ./cert.pfx
 
-# Package with generated and installed certificate and self-contained winAppSDK runtime
+# Package with generated and installed certificate and self-contained WinAppSDK runtime
 winapp pack ./dist --generate-cert --install-cert --self-contained
 ```
 
@@ -262,7 +262,7 @@ winapp cert generate [options]
 - `--password <password>` - Certificate password (default: "password")
 - `--valid-days <valid-days>` - Number of days the certificate is valid (default: 365)
 - `--install` - Install the certificate to the local machine store after generation
-- `--if-exists <Error|Overwrite|Skip>` - Set behavior if the certificate file already exists [default: Error]
+- `--if-exists <Error|Overwrite|Skip>` - Set behavior if the certificate file already exists (default: Error)
 
 #### cert install
 
@@ -392,12 +392,12 @@ npx winapp node create-addon --name myWindowsAddon
 
 ### node add-electron-debug-identity
 
-*(Available in NPM package only)* Add app identity to Electron development process by using sparse packaging. Requires an appxmanifest.xml (create one with `winapp init` or `winapp manifest generate` if you don't have one)
+*(Available in NPM package only)* Add app identity to Electron development process by using sparse packaging. Requires an appxmanifest.xml (create one with `winapp init` or `winapp manifest generate` if you don't have one).
 
 > [!IMPORTANT]  
 > There is a known issue with sparse packaging Electron applications which causes the app to crash on start or not render the web content. The issue has been fixed in Windows but it has not propagated to external Windows devices yet. If you are seeing this issue after calling `add-electron-debug-identity`, you can [disable sandboxing in your Electron app](https://www.electronjs.org/docs/latest/tutorial/sandbox#disabling-chromiums-sandbox-testing-only) for debug purposes with the `--no-sandbox` flag. This issue does not affect full MSIX packaging.
 <br /><br />
-To undo the electron debug identity, the easiest is to clear your node modules folder (or just the electron folder) and `npm install` again
+To undo the Electron debug identity, the easiest approach is to clear your node_modules folder (or just the electron folder) and run `npm install` again.
 
 ```bash
 npx winapp node add-electron-debug-identity [options]
