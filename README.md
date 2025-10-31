@@ -114,7 +114,7 @@ You can also use C#:
 
 ```bash
 # Create a C# node add-on
-npx winsdk node create-addon --template cs --name myCsAddon
+npx winapp node create-addon --template cs --name myCsAddon
 ```
 
 This will create a .csproj file with a .cs file you can call from your Javascript using the node-api-dotnet
@@ -142,7 +142,7 @@ To build the CLI:
 
 To consume the CLI you built from a local test project:
 ```
-npm install --save-dev <winsdk-repo-root>\artifacts\microsoft-winsdk-<version-string>.tgz
+npm install --save-dev <winapp-repo-root>\artifacts\microsoft-winapp-<version-string>.tgz
 ```
 
 ## Trademarks

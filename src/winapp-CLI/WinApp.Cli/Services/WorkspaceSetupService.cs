@@ -437,7 +437,7 @@ internal class WorkspaceSetupService(
                 logger.LogInformation("{UISymbol} winapp init completed.", UiSymbols.Party);
             }
             
-            // Update Directory.Packages.props versions to match winsdk.yaml if needed
+            // Update Directory.Packages.props versions to match winapp.yaml if needed
             {                
                 try
                 {

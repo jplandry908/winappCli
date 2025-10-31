@@ -3,9 +3,9 @@
 
 using Microsoft.Extensions.Logging;
 using System.Xml;
-using Winsdk.Cli.Helpers;
+using WinApp.Cli.Helpers;
 
-namespace Winsdk.Cli.Services;
+namespace WinApp.Cli.Services;
 
 /// <summary>
 /// Service for managing Directory.Packages.props files
@@ -15,24 +15,24 @@ internal class DirectoryPackagesService(ILogger<DirectoryPackagesService> logger
     private const string DirectoryPackagesFileName = "Directory.Packages.props";
 
     /// <summary>
-    /// Updates Directory.Packages.props in the specified directory to match versions from winsdk.yaml
+    /// Updates Directory.Packages.props in the specified directory to match versions from winapp.yaml
     /// </summary>
-    /// <param name="configDir">Directory containing winsdk.yaml and potentially Directory.Packages.props</param>
-    /// <param name="packageVersions">Dictionary of package names to versions from winsdk.yaml</param>
+    /// <param name="configDir">Directory containing winapp.yaml and potentially Directory.Packages.props</param>
+    /// <param name="packageVersions">Dictionary of package names to versions from winapp.yaml</param>
     /// <returns>True if file was found and updated, false otherwise</returns>
-    public bool UpdatePackageVersions(string configDir, Dictionary<string, string> packageVersions)
+    public bool UpdatePackageVersions(DirectoryInfo configDir, Dictionary<string, string> packageVersions)
     {
-        var propsFilePath = Path.Combine(configDir, DirectoryPackagesFileName);
+        var propsFilePath = Path.Combine(configDir.FullName, DirectoryPackagesFileName);
         
         if (!File.Exists(propsFilePath))
         {
-            logger.LogDebug("{UISymbol} No {FileName} found in {ConfigDir}", UiSymbols.Note, DirectoryPackagesFileName, configDir);
+            logger.LogDebug("{UISymbol} No {FileName} found in {ConfigDir}", UiSymbols.Note, DirectoryPackagesFileName, configDir.FullName);
             return false;
         }
 
         try
         {
-            logger.LogInformation("{UISymbol} Updating {FileName} to match winsdk.yaml versions...", UiSymbols.Wrench, DirectoryPackagesFileName);
+            logger.LogInformation("{UISymbol} Updating {FileName} to match winapp.yaml versions...", UiSymbols.Wrench, DirectoryPackagesFileName);
 
             // Load the XML document with whitespace preservation
             var doc = new XmlDocument();
@@ -73,7 +73,7 @@ internal class DirectoryPackagesService(ILogger<DirectoryPackagesService> logger
 
                 var packageName = includeAttr.Value;
                 
-                // Check if this package is in our winsdk.yaml config
+                // Check if this package is in our winapp.yaml config
                 if (packageVersions.TryGetValue(packageName, out var newVersion))
                 {
                     var oldVersion = versionAttr.Value;

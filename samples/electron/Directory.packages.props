@@ -4,7 +4,7 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
-    <!-- These versions are updated automatically during winsdk restore to match winsdk.yaml -->
+    <!-- These versions are updated automatically during winapp restore to match winapp.yaml -->
     <PackageVersion Include="Microsoft.JavaScript.NodeApi" Version="0.9.17" />
     <PackageVersion Include="Microsoft.JavaScript.NodeApi.Generator" Version="0.9.17" />
 

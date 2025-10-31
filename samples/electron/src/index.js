@@ -6,8 +6,9 @@ const addon = require('../addon/build/Release/addon.node');
 let csAddon = undefined; 
 
 function getCsAddon() {
+  const csAddonPath = '../csAddon/dist/csAddon.node';
   if (csAddon === undefined) {
-    csAddon = require('../csAddon/dist/csAddon.node');
+    csAddon = require(csAddonPath);
   }
   return csAddon;
 }

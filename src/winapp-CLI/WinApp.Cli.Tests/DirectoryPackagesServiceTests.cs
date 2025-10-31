@@ -1,22 +1,22 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-using Winsdk.Cli.Services;
+using WinApp.Cli.Services;
 
-namespace Winsdk.Cli.Tests;
+namespace WinApp.Cli.Tests;
 
 [TestClass]
 public class DirectoryPackagesServiceTests : BaseCommandTests
 {
-    private string _tempDirectory = null!;
+    private string _testTempDirectory = null!;
     private IDirectoryPackagesService _directoryPackagesService = null!;
 
     [TestInitialize]
     public void Setup()
     {
         // Create a temporary directory for testing
-        _tempDirectory = Path.Combine(Path.GetTempPath(), $"WinsdkDirectoryPackagesTest_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_tempDirectory);
+        _testTempDirectory = Path.Combine(Path.GetTempPath(), $"winappDirectoryPackagesTest_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(_testTempDirectory);
 
         _directoryPackagesService = GetRequiredService<IDirectoryPackagesService>();
     }
@@ -25,11 +25,11 @@ public class DirectoryPackagesServiceTests : BaseCommandTests
     public void Cleanup()
     {
         // Clean up temporary files and directories
-        if (Directory.Exists(_tempDirectory))
+        if (Directory.Exists(_testTempDirectory))
         {
             try
             {
-                Directory.Delete(_tempDirectory, true);
+                Directory.Delete(_testTempDirectory, true);
             }
             catch
             {
@@ -48,7 +48,7 @@ public class DirectoryPackagesServiceTests : BaseCommandTests
         };
 
         // Act
-        var result = _directoryPackagesService.UpdatePackageVersions(_tempDirectory, packageVersions);
+        var result = _directoryPackagesService.UpdatePackageVersions(new DirectoryInfo(_testTempDirectory), packageVersions);
 
         // Assert
         Assert.IsFalse(result, "Should return false when Directory.Packages.props doesn't exist");
@@ -58,7 +58,7 @@ public class DirectoryPackagesServiceTests : BaseCommandTests
     public void UpdatePackageVersionsUpdatesSinglePackageReturnsTrue()
     {
         // Arrange
-        var propsFilePath = Path.Combine(_tempDirectory, "Directory.Packages.props");
+        var propsFilePath = Path.Combine(_testTempDirectory, "Directory.Packages.props");
         var originalContent = @"<Project>
   <ItemGroup>
     <PackageVersion Include=""Microsoft.Windows.SDK.BuildTools"" Version=""10.0.22621.1000"" />
@@ -72,7 +72,7 @@ public class DirectoryPackagesServiceTests : BaseCommandTests
         };
 
         // Act
-        var result = _directoryPackagesService.UpdatePackageVersions(_tempDirectory, packageVersions);
+        var result = _directoryPackagesService.UpdatePackageVersions(new DirectoryInfo(_testTempDirectory), packageVersions);
 
         // Assert
         Assert.IsTrue(result, "Should return true when update is successful");
@@ -87,7 +87,7 @@ public class DirectoryPackagesServiceTests : BaseCommandTests
     public void UpdatePackageVersionsUpdatesMultiplePackagesReturnsTrue()
     {
         // Arrange
-        var propsFilePath = Path.Combine(_tempDirectory, "Directory.Packages.props");
+        var propsFilePath = Path.Combine(_testTempDirectory, "Directory.Packages.props");
         var originalContent = @"<Project>
   <ItemGroup>
     <PackageVersion Include=""Microsoft.Windows.SDK.BuildTools"" Version=""10.0.22621.1000"" />
@@ -105,7 +105,7 @@ public class DirectoryPackagesServiceTests : BaseCommandTests
         };
 
         // Act
-        var result = _directoryPackagesService.UpdatePackageVersions(_tempDirectory, packageVersions);
+        var result = _directoryPackagesService.UpdatePackageVersions(new DirectoryInfo(_testTempDirectory), packageVersions);
 
         // Assert
         Assert.IsTrue(result, "Should return true when update is successful");
@@ -120,7 +120,7 @@ public class DirectoryPackagesServiceTests : BaseCommandTests
     public void UpdatePackageVersionsPreservesWhitespaceReturnsTrue()
     {
         // Arrange
-        var propsFilePath = Path.Combine(_tempDirectory, "Directory.Packages.props");
+        var propsFilePath = Path.Combine(_testTempDirectory, "Directory.Packages.props");
         var originalContent = @"<Project>
   <ItemGroup>
     <!-- This is a comment -->
@@ -137,7 +137,7 @@ public class DirectoryPackagesServiceTests : BaseCommandTests
         };
 
         // Act
-        var result = _directoryPackagesService.UpdatePackageVersions(_tempDirectory, packageVersions);
+        var result = _directoryPackagesService.UpdatePackageVersions(new DirectoryInfo(_testTempDirectory), packageVersions);
 
         // Assert
         Assert.IsTrue(result, "Should return true when update is successful");
@@ -151,7 +151,7 @@ public class DirectoryPackagesServiceTests : BaseCommandTests
     public void UpdatePackageVersionsNoChangesNeededReturnsTrue()
     {
         // Arrange
-        var propsFilePath = Path.Combine(_tempDirectory, "Directory.Packages.props");
+        var propsFilePath = Path.Combine(_testTempDirectory, "Directory.Packages.props");
         var originalContent = @"<Project>
   <ItemGroup>
     <PackageVersion Include=""Microsoft.Windows.SDK.BuildTools"" Version=""10.0.22621.3233"" />
@@ -165,7 +165,7 @@ public class DirectoryPackagesServiceTests : BaseCommandTests
         };
 
         // Act
-        var result = _directoryPackagesService.UpdatePackageVersions(_tempDirectory, packageVersions);
+        var result = _directoryPackagesService.UpdatePackageVersions(new DirectoryInfo(_testTempDirectory), packageVersions);
 
         // Assert
         Assert.IsTrue(result, "Should return true even when no changes are needed");
@@ -178,7 +178,7 @@ public class DirectoryPackagesServiceTests : BaseCommandTests
     public void UpdatePackageVersionsPartialMatchUpdatesOnlyMatchingPackages()
     {
         // Arrange
-        var propsFilePath = Path.Combine(_tempDirectory, "Directory.Packages.props");
+        var propsFilePath = Path.Combine(_testTempDirectory, "Directory.Packages.props");
         var originalContent = @"<Project>
   <ItemGroup>
     <PackageVersion Include=""Microsoft.Windows.SDK.BuildTools"" Version=""10.0.22621.1000"" />
@@ -190,11 +190,11 @@ public class DirectoryPackagesServiceTests : BaseCommandTests
         var packageVersions = new Dictionary<string, string>
         {
             { "Microsoft.Windows.SDK.BuildTools", "10.0.22621.3233" }
-            // Note: SomeOtherPackage not in winsdk.yaml
+            // Note: SomeOtherPackage not in winapp.yaml
         };
 
         // Act
-        var result = _directoryPackagesService.UpdatePackageVersions(_tempDirectory, packageVersions);
+        var result = _directoryPackagesService.UpdatePackageVersions(new DirectoryInfo(_testTempDirectory), packageVersions);
 
         // Assert
         Assert.IsTrue(result, "Should return true when update is successful");
@@ -209,7 +209,7 @@ public class DirectoryPackagesServiceTests : BaseCommandTests
     public void UpdatePackageVersionsEmptyFileReturnsFalse()
     {
         // Arrange
-        var propsFilePath = Path.Combine(_tempDirectory, "Directory.Packages.props");
+        var propsFilePath = Path.Combine(_testTempDirectory, "Directory.Packages.props");
         File.WriteAllText(propsFilePath, "");
 
         var packageVersions = new Dictionary<string, string>
@@ -218,7 +218,7 @@ public class DirectoryPackagesServiceTests : BaseCommandTests
         };
 
         // Act
-        var result = _directoryPackagesService.UpdatePackageVersions(_tempDirectory, packageVersions);
+        var result = _directoryPackagesService.UpdatePackageVersions(new DirectoryInfo(_testTempDirectory), packageVersions);
 
         // Assert
         Assert.IsFalse(result, "Should return false for empty/invalid XML file");
@@ -228,7 +228,7 @@ public class DirectoryPackagesServiceTests : BaseCommandTests
     public void UpdatePackageVersionsNoPackageVersionElementsReturnsFalse()
     {
         // Arrange
-        var propsFilePath = Path.Combine(_tempDirectory, "Directory.Packages.props");
+        var propsFilePath = Path.Combine(_testTempDirectory, "Directory.Packages.props");
         var originalContent = @"<Project>
   <ItemGroup>
     <!-- No PackageVersion elements -->
@@ -242,7 +242,7 @@ public class DirectoryPackagesServiceTests : BaseCommandTests
         };
 
         // Act
-        var result = _directoryPackagesService.UpdatePackageVersions(_tempDirectory, packageVersions);
+        var result = _directoryPackagesService.UpdatePackageVersions(new DirectoryInfo(_testTempDirectory), packageVersions);
 
         // Assert
         Assert.IsFalse(result, "Should return false when no PackageVersion elements exist");
@@ -252,7 +252,7 @@ public class DirectoryPackagesServiceTests : BaseCommandTests
     public void UpdatePackageVersionsMultipleItemGroupsUpdatesAll()
     {
         // Arrange
-        var propsFilePath = Path.Combine(_tempDirectory, "Directory.Packages.props");
+        var propsFilePath = Path.Combine(_testTempDirectory, "Directory.Packages.props");
         var originalContent = @"<Project>
   <ItemGroup>
     <PackageVersion Include=""Microsoft.Windows.SDK.BuildTools"" Version=""10.0.22621.1000"" />
@@ -270,7 +270,7 @@ public class DirectoryPackagesServiceTests : BaseCommandTests
         };
 
         // Act
-        var result = _directoryPackagesService.UpdatePackageVersions(_tempDirectory, packageVersions);
+        var result = _directoryPackagesService.UpdatePackageVersions(new DirectoryInfo(_testTempDirectory), packageVersions);
 
         // Assert
         Assert.IsTrue(result, "Should return true when update is successful");

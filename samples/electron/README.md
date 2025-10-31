@@ -10,7 +10,7 @@ Here's how you can build, package, deploy, and run the sample (more detail in be
 pwsh
 cd <reporoot>\samples\electron
 
-# Build the winsdk CLI
+# Build the winapp CLI
 ..\..\build-cli.ps1
 
 # Install/restore the project dependencies
@@ -23,12 +23,12 @@ npm run package-msix
 npm run package-msix:x64
 
 # Install your dev cert if you haven't already (If Sudo isn't enabled, use an admin prompt)
-sudo pwsh -c "npx winsdk cert install .\devcert.pfx ; pause"
+sudo pwsh -c "npx winapp cert install .\devcert.pfx ; pause"
 
 # Deploy the MSIX to local machine
-add-appxpackage out\electronWinsdkSample.msix
+add-appxpackage out\electronwinappSample.msix
 
-# Find "Electron winsdk sample" in your start menu and run!
+# Find "Electron winapp sample" in your start menu and run!
 # (note that first launch will be slow)
 ```
 
@@ -54,6 +54,10 @@ a .node file that is trimmed and doesn't require the .net runtime to be installe
 4. **Modified `forge.config.js`** to ignore the `.winapp`, `devcert.pfx`, and `winapp.yaml` files from the final package, and to copy the `appxmanifest.xml` and `Assets` folder to the final package.
 
 ## Prerequisites
+
+* Node.js
+* Visual Studio 2022 for building the native component
+* .Net 8 SDK for building the C# component
 
 Before running the sample, ensure the npm package has been built:
 
