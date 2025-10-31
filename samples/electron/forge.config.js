@@ -7,12 +7,12 @@ module.exports = {
   packagerConfig: {
     asar: true,
     ignore: [
-      /^\/\.winsdk($|\/)/,
+      /^\/\.winapp($|\/)/,
+      /^\/winapp\.yaml$/,
       /\.pfx$/,
-      /\.pdb$/,
-      /^\/winsdk\.yaml$/,
+      /\.pdb$/,      
       /\/obj($|\/)/,
-      /\/bin($|\/)/
+      /\/bin($|\/)/      
     ]
   },
   rebuildConfig: {},
