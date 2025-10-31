@@ -18,13 +18,17 @@
   <a href="#-feedback">Feedback</a>
 </h3>
 <br/><br/>
-The Windows Development CLI is a single command line interface for managing Windows SDKs, packaging, generating app identity, manifests, certificates and using build tools with any app framework. This tool bridges the gap between cross-platform development and Windows-native capabilities.
+
+> [!IMPORTANT]  
+> The Windows App Development CLI is in preview and in active development, and we'd love your feedback! Share your thoughts by creating an [issue](https://github.com/microsoft/WinAppCli/issues).
+
+The Windows App Development CLI is a single command-line interface for managing Windows SDKs, packaging, generating app identity, manifests, certificates, and using build tools with any app framework. This tool bridges the gap between cross-platform development and Windows-native capabilities.
 <br/><br/>
-Whether you're building with Electron, .NET/Win32, CMake or Python, this CLI gives you access to:
+Whether you're building with Electron, .NET/Win32, CMake, or Python, this CLI gives you access to:
 
 - **Modern Windows APIs** - Windows App SDK and Windows SDK with automatic setup and code generation
 - **App Identity** - Debug and test by adding app identity without full packaging in a snap
-- **MSIX Packaging** -  App packaging with signing and Store readiness
+- **MSIX Packaging** - App packaging with signing and Store readiness
 - **Developer Tools** - Manifests, certificates, assets, and build integration
 
 Perfect for:
@@ -33,11 +37,9 @@ Perfect for:
 - **Developers testing and deploying** adding app identity for development or packaging for deployment
 - **CI/CD pipelines** automating Windows app builds
 
-</div>
-
 ## 📦 Installation
 
-The easiest way to use the CLI is to download automated nightly build from GitHub Releases.
+The easiest way to use the CLI is to download the latest build from GitHub Releases.
 
 **[👉 Download Latest Build](https://github.com/microsoft/WinAppCli/releases/latest)**
 
@@ -50,9 +52,11 @@ The easiest way to use the CLI is to download automated nightly build from GitHu
 
 ### Adding to Path
 
-The easiest way to use the CLI globally is to add it to the PATH. **Add to Path**:
+The easiest way to use the CLI globally is to add it to the PATH.
 
-Windows Search → Edit the system environment variables → Environment Variables → Path → Edit → New → Add the location (folder) of winapp.exe
+**Add to Path**:
+
+Windows Search → Edit the system environment variables → Environment Variables → Path → Edit → New → Add the location (folder) of `winapp.exe`
 
 ## 📋 Usage
 
@@ -62,7 +66,7 @@ Once installed (see [Installation](#-installation) above), verify the installati
 winapp --help
 ```
 
-or if using Electron/NodeJS
+or if using Electron/Node.js
 
 ```bash
 npx winapp --help
