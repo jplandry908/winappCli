@@ -32,6 +32,21 @@ The Windows Development CLI **must** be in your [PATH](#adding-to-path) for the 
 
 Alternatively, you can clone and build this repository. Run Identity.GUI.Experimental in Visual Studio to build and run the app.
 
+## Usage
+
+### .NET apps (WPF, WinForms)
+
+- Drop in an .exe from your binaries folder to add debug identity to it. The app will find the .csproj for the .exe (ie. if your .exe is in the /bin folder, the app will find the parent .csproj and create Assets and appxmanifest in that location). The .exe will be granted app identity via external location (sparse) packaging.
+- Drop in a folder, and that app will be packaged into an MSIX
+
+### Python
+
+- This is currently a feature we are experimenting with. Currently, python files/scripts (.py) are supported or entire folders for packaging
+
+### MSIX
+
+- Drop in an MSIX and a cert will be created, installed and registered locally
+
 ## Feedback for this Experimental App
 
 Please note that this app is experimental and may have issues as we gather feedback on the functionality, usefulness and value of the UI-based solution. If you see value or issues in this app, please let us know:
