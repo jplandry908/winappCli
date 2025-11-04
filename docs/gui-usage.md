@@ -1,6 +1,6 @@
 # 🧪 Windows Identity App Usage
 
-This is an **experimental** app (GUI) that wraps the CLI and provides an intuitive, drag-and-drop experience with the following features:
+This is an **experimental** app/sample (GUI) that wraps the CLI and provides an intuitive, drag-and-drop experience with the following features:
 
 - Supports .NET (Winforms, WPF..etc) apps, Python scripts/folders, MSIX
 - Drop in a WinForms, WPF executable (.exe) to add development/debug app identity (via external location/sparse packaging) in a single click!
@@ -8,7 +8,7 @@ This is an **experimental** app (GUI) that wraps the CLI and provides an intuiti
 - Drop in an MSIX to sign and register it locally in a single click
 - Drop in a Python (.py) file to add debug identity in a single click
 
-The Windows Development CLI **must** be in your [PATH](#adding-to-path) for the Identity Tool to function since it calls the CLI.
+We would love your feedback on this UI-based approach and whether it adds value or doesn't fit with your development workflows.
 
 <div align="center">
   <table>
@@ -25,12 +25,19 @@ The Windows Development CLI **must** be in your [PATH](#adding-to-path) for the 
 
 ## Install the GUI Tool
 
+There are 2 ways to run the GUI (experimental). The Windows Development CLI **must** be in your [PATH](#adding-to-path) for the Identity Tool to function since it calls the CLI.
+
+### Build the repository
+
+Clone and build this repository. Run winapp.cli in Visual Studio to build and run the app.
+
+### Download the MSIX (build pipeline in progress)
+
 1. **[👉 Download Latest Experimental Build (unsigned .msix)](https://github.com/microsoft/WinAppCli/releases/latest)**
 2. Run Powershell as **Administrator** and `Add-AppPackage -Path <msix> -AllowUnsigned`
 
 `<msix>` should be replaced with the full path of the downloaded build (msix file).
 
-Alternatively, you can clone and build this repository. Run Identity.GUI.Experimental in Visual Studio to build and run the app.
 
 ## Usage
 
