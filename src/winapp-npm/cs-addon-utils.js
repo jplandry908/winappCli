@@ -2,6 +2,7 @@ const fs = require('fs').promises;
 const fsSync = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const { checkAndInstallDotnetSdk, checkAndInstallVisualStudioBuildTools } = require('./dependency-utils');
 
 /**
  * Generates C# addon files for an Electron project
@@ -17,12 +18,18 @@ async function generateCsAddonFiles(options = {}) {
     verbose = true 
   } = options;
 
+  let needsTerminalRestart = false;
+
   try {
     // Validate addon name (should be a valid C# namespace/class name)
     validateAddonName(name);
 
-    // Check if dotnet SDK is available
-    await checkDotnetSdk(false); // Don't show verbose SDK info
+    const vsInstalled = await checkAndInstallVisualStudioBuildTools(false); // Don't show verbose build tools info
+    // We don't set needsTerminalRestart for VS installation because so far the tools that need it know how to find it.
+
+    // Check if dotnet SDK is available and offer to install if missing
+    const dotnetInstalled = await checkAndInstallDotnetSdk("10", false); // Don't show verbose SDK info
+    if (dotnetInstalled) needsTerminalRestart = true;
 
     // Check if addon already exists
     const addonDir = path.join(projectRoot, name);
@@ -53,6 +60,7 @@ async function generateCsAddonFiles(options = {}) {
       success: true,
       addonName: name,
       addonPath: addonDir,
+      needsTerminalRestart: needsTerminalRestart,
       files: [
         path.join(addonDir, `${name}.csproj`),
         path.join(addonDir, 'addon.cs'),
@@ -98,35 +106,6 @@ function validateAddonName(name) {
 
   if (csharpKeywords.includes(name.toLowerCase())) {
     throw new Error(`Addon name cannot be a C# keyword: ${name}`);
-  }
-}
-
-/**
- * Checks if dotnet SDK is installed and available
- * @param {boolean} verbose - Enable verbose logging
- */
-async function checkDotnetSdk(verbose) {
-  try {
-    const version = execSync('dotnet --version', { 
-      encoding: 'utf8',
-      stdio: verbose ? ['pipe', 'pipe', 'inherit'] : 'pipe'
-    }).trim();
-    
-    if (verbose) {
-      console.log(`✅ .NET SDK detected: ${version}`);
-    }
-    
-    // Check if it's at least .NET 8.0
-    const majorVersion = parseInt(version.split('.')[0]);
-    if (majorVersion < 8) {
-      throw new Error(`.NET SDK version ${version} detected. Please install .NET 8.0 or later.`);
-    }
-    
-  } catch (error) {
-    if (error.message.includes('not found') || error.message.includes('not recognized')) {
-      throw new Error('dotnet SDK is not installed or not in PATH. Please install .NET 8.0 SDK from https://dotnet.microsoft.com/download');
-    }
-    throw error;
   }
 }
 
